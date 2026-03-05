@@ -1,0 +1,258 @@
+[WEAPON] Hanbo
+ALIASES: hanbo, hanbō, short staff, three-foot staff, 3-foot staff
+TYPE: Short staff (approx. 90 cm or 3 feet)
+KAMAE: Munen Muso, Kata Yaburi, Ontonashi
+CORE ACTIONS: shomen uchi, yokomen uchi, age uchi, do-kote strikes, tsuki thrust, ashi-barai sweep
+RANKS: Introduced at 8th Kyu
+NOTES: Often used to enter, disrupt balance, and strike at skeletal targets; integrates smoothly with taijutsu footwork.
+
+[WEAPON] Rokushakubo
+ALIASES: rokushakubo, rokushaku bo, bo, long staff, rokushaku-bō
+TYPE: Long staff (approx. 180 cm or 6 feet)
+KAMAE: hira no kamae, chudan, jodan, gedan, seigan, heito, ihen
+CORE ACTIONS: long-range shomen/yokomen/age/do strikes, tsuki thrusts, sweeping actions, bo-furi spinning drills
+RANKS: Introduced at 6th Kyu
+NOTES: Emphasizes distance, leverage, and centerline control; integrates ukemi and spinning transitions.
+
+[WEAPON] Shuriken
+ALIASES: shuriken, bo shuriken, bō shuriken, senban, shaken, throwing spike, throwing star
+TYPE: Throwing blades (spikes or flat blades)
+MODES: daken-jutsu (throwing), shoken-jutsu (in-hand striking)
+THROWS: jikidaho (direct), hantendaho (reverse), takai-tendaho (fast spin)
+RANGE: Common 3-ken range (~5.4 m); extended range develops with practice
+SAFETY/DRILL: anchor point alignment, wrist snap, concealment, controlled retrieval path
+RANKS: Introduced at 3rd Kyu
+NOTES: Used for distraction, pain compliance, and precision targeting; multiple shapes exist across Bujinkan schools.
+
+[WEAPON] Katana
+ALIASES: katana, sword, daito
+TYPE: Long sword
+KAMAE: daijodan, chudan, gedan, seigan, jodan
+CORE ACTIONS: kirioroshi (vertical cut), yokogiri (horizontal cut), thrusts, deflections, kamae transitions
+RANKS: Introduced at 7th Kyu
+NOTES: Movement emphasizes distance, timing, and angling; integrates naturally with taijutsu footwork.
+
+[WEAPON] Tanto
+ALIASES: tanto, dagger, knife
+TYPE: Short blade (close-range)
+CORE ACTIONS: tsuki thrust, yokomen slashes, grip transitions, disarms
+RANKS: Introduced at 5th Kyu
+NOTES: Often taught as both offensive and defensive material; integrates with taihen (body evasion).
+
+[WEAPON] Shoto
+ALIASES: shoto, short sword, shōtō
+TYPE: Short sword
+CORE ACTIONS: close-range cuts, thrusts, traps, paired weapon interactions
+RANKS: Introduced at 5th Kyu
+NOTES: Used for confined-space movement and rapid transitions.
+
+[WEAPON] Kusari Fundo
+ALIASES: kusari fundo, manriki-gusari, weighted chain
+TYPE: Chain weapon with weighted ends
+CORE ACTIONS: wrapping, entangling, joint targeting, percussive strikes, weapon control
+RANKS: Introduced at 4th Kyu
+NOTES: Requires strong control and awareness; blends striking and grappling concepts.
+
+[WEAPON] Kyoketsu Shoge
+ALIASES: kyoketsu shoge, kyoketsu-shoge, kyoketsu shōge
+TYPE: Blade + rope + ring combination weapon
+CORE ACTIONS: entanglement, snagging, extended-range stabbing, sweeping, control of limbs and weapons
+RANKS: Introduced at 1st Kyu
+NOTES: Emphasizes distance manipulation, angling, and deceptive trajectories.
+
+[WEAPON] Tessen
+ALIASES: tessen, iron fan
+TYPE: Rigid fan weapon
+CORE ACTIONS: striking, trapping, pressure targeting, parrying
+RANKS: Introduced at 3rd Kyu
+NOTES: Concealable and versatile, used for both offense and defense.
+
+[WEAPON] Kunai
+ALIASES: kunai, utility blade, digging knife
+TYPE: Multipurpose tool weapon
+CORE ACTIONS: stabbing, hooking, tearing, leverage-based locks
+RANKS: Introduced at 3rd Kyu
+NOTES: Often paired with climbing or entanglement techniques.
+
+[WEAPON] Shuko
+ALIASES: shuko, hand claws, shukō
+TYPE: Metal climbing/retention claws
+CORE ACTIONS: gripping, tearing, climbing, close-quarters striking
+RANKS: Introduced at 2nd Kyu
+NOTES: Historically associated with climbing and ambush scenarios, used defensively in kata.
+
+[WEAPON] Jutte
+ALIASES: jutte, sai, jitte
+TYPE: Short metal rod with a side hook, primarily for defense, particularly against swords
+CORE ACTIONS: blocking, disarming, hooking, striking
+RANKS: Introduced at 3rd Kyu
+NOTES: Can be used to block and trap sword strikes, and as a baton to strike, disarm, or manipulate an opponent's joints.
+
+
+---
+
+# Shuriken Throwing Basics
+## Source: Ninja Training TV | Reformatted for LLM Ingestion
+---
+
+## 📌 Section: Overview
+### Topic: Dual Use of Shuriken
+
+- There are two primary ways to use a shuriken:
+  - **Daken-jutsu (打剣術)** – Throwing techniques
+  - **Shoken-jutsu (掌剣術)** – Hand-to-hand techniques
+
+Both methods are based on the same context: a concealed blade (or object) is used in defense, either thrown or used in close combat.
+
+🎯 *Principle:* Train to be prepared for either application — throwing or striking — without reliance on circumstance.
+
+---
+
+## 📌 Section: Daken-jutsu
+### Topic: Throwing Techniques
+
+- **Definition**: The art of throwing an object — traditionally a blade, but can be anything.
+- **Improvised Weapons**: Pencil, chopstick, paintbrush, tool — anything small and throwable.
+- **Advantage**: Faster than drawing a weapon (e.g. sword, bow, firearm).
+
+#### 🧭 Functional Range
+- Effective range is up to **10 meters**.
+- Traditional practice limit: **3 tatami mats** distance = **sangen (三間)** ≈ **5.4 meters / 17 feet**.
+- Extended skill benchmarks:
+  - **Yongen (四間)** = ~7.2 meters / 22 feet
+  - **Goken (五間)** = ~9 meters / 29 feet
+
+#### 📏 Japanese Distance Terms
+| Term   | Meaning         | Approximate Distance     |
+|--------|------------------|--------------------------|
+| **Ken**     | 1 mat / 1 reach | ~1.8m / 6ft            |
+| **Sangen**  | 3 ken            | ~5.4m / 17ft           |
+| **Yongen**  | 4 ken            | ~7.2m / 22ft           |
+| **Goken**   | 5 ken            | ~9m / 29ft             |
+
+---
+
+## 📌 Section: Biomechanics
+### Topic: Throwing Motion
+
+- **Arm Mechanics**: Throwing = circular motion around shoulder. Shoulder is the fixed axis.
+- **Punching vs Throwing**:
+  - Punch = Linear force
+  - Throw = Rotational speed
+
+#### ✅ Throwing Form Guidelines
+1. Do **not** rely on straight extension (as in punching).
+2. Use full-body rotation for power.
+3. Ensure the wrist flick aligns with release for control.
+
+🧠 *Tip:* Think of the throw like casting a fishing rod — smooth arc, timed release.
+
+---
+
+## 📌 Section: Targeting & Practice
+### Topic: Effective Practice Habits
+
+- Practice throwing at consistent distances (Ken/Sangen/Yongen).
+- Track success by accuracy, penetration (if using real metal), and consistency.
+- Consider trajectory vs speed:
+  - Close = fast release
+  - Far = more arc and wrist control
+
+🎯 *Visualization:* Imagine a line extending from shoulder to target. The shuriken follows this path.
+
+---
+
+## 📌 Section: Shoken-jutsu
+### Topic: Close-Quarters Application
+
+- **Definition**: Using the shuriken in hand-to-hand combat.
+- Can function as a surprise striking tool (e.g., palm strike with metal edge).
+- Use like a yawara stick or pressure point implement.
+- Often concealed in palm or sleeve.
+
+⚠️ *Partner awareness essential — train with safe replicas.*
+
+---
+
+## 📌 Section: Training Mindset
+### Topic: Philosophy of Shuriken Use
+
+- A true ninja is ready to use any object in the environment as a weapon.
+- Shuriken should not be relied upon solely for combat, but as a tool of timing, deception, and disruption.
+- The mindset is not “I throw a weapon,” but rather “I use the moment.”
+
+🧘 *Zanshin* (残心) — Remaining mind/spirit — applies **after** the throw.
+
+---
+
+
+## 📌 Section: Types of Shuriken
+### Topic: Classification and Features
+
+Shuriken come in several forms, generally categorized into two main groups:
+
+---
+
+### 1. **Bo-Shuriken (棒手裏剣)**
+- **Shape**: Straight spike — like a needle, dart, or nail.
+- **Material**: Usually steel or iron.
+- **Size**: Typically 12–18 cm long (~5–7 inches).
+- **Throwing**: Usually single-spin (ken or sangen).
+- **Grip**: Thrown from the center or tail end.
+- **Ryu Examples**:
+  - Togakure-ryū used bo-shuriken hidden in the *sleeves* or *pant legs*.
+
+🛠 *Common shapes*: square, round, octagonal cross-section.
+
+---
+
+### 2. **Hira-Shuriken (平手裏剣)**
+- **Shape**: Flat, bladed — the classic “ninja star.”
+- **Blades**: Typically 4 to 8 points.
+- **Material**: Forged steel; sharpened on edges.
+- **Throwing**: More of a slicing rotation; good at short ranges.
+- **Grip**: Between the index and thumb; thrown in a flicking motion.
+
+⚠️ Often used for distraction, cutting skin, or applying toxins — not primary killing tools.
+
+---
+
+### 3. **Senban Shuriken (旋盤手裏剣)**
+- **Specific subtype** of hira-shuriken.
+- **Shape**: Four-pointed “square” star with sharp corners.
+- **Unique Use**: May be stuck in the ground for traps, or thrown edge-first.
+- **Historical Use**: Prominent in Togakure-ryū.
+
+---
+
+### 4. **Needle Shuriken / Hari-gata (針型手裏剣)**
+- **Shape**: Very thin needle-like; may resemble large sewing needles.
+- **Tactic**: Excellent for precise, stealthy insertion (e.g., behind the ear, through thin clothing).
+- **Often used with poison.**
+
+---
+
+### 5. **Modern Improvised Throwing Tools**
+- Chopsticks, pens, nails, allen wrenches, hex keys — anything can be trained as a shuriken if:
+  - It fits in the hand
+  - Is balanced or controllable
+  - Can pierce, distract, or strike with intent
+
+🥋 *Philosophy*: “Anything in the environment can be a tool of survival if your spirit is prepared.”
+
+---
+
+### 🧠 Practical Advice for Training
+| Type           | Range      | Rotation | Application       |
+|----------------|------------|----------|-------------------|
+| Bo-shuriken    | Mid-Long   | 1–2 spin | Penetration       |
+| Hira-shuriken  | Short      | Rapid    | Distraction, slice|
+| Senban         | Short      | Flat spin| Trap, utility     |
+| Improvised     | Varies     | N/A      | Training mindset  |
+
+---
+
+🧷 *Pro Tip:* Store shuriken safely in a cloth wrap or wooden container to avoid edge dulling or accidental injury.
+
+
+
