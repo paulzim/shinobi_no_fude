@@ -17,9 +17,22 @@ import pickle
 from pathlib import Path
 from typing import List, Dict, Any
 
-import faiss  # type: ignore
-import numpy as np
-from sentence_transformers import SentenceTransformer
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import faiss  # type: ignore
+except Exception:
+    faiss = None
+
+try:
+    from sentence_transformers import SentenceTransformer  # type: ignore
+except Exception:
+    SentenceTransformer = None
+
+from scribe.text_seam import extract_chunk_extractions
 
 
 # ---------------------------
@@ -100,6 +113,7 @@ def simple_chunk_text(text: str, source: str) -> List[Dict[str, Any]]:
                 priority = 2
             else:
                 priority = 1
+            extractions = extract_chunk_extractions(chunk_text, source)
 
             chunks.append(
                 {
@@ -109,6 +123,8 @@ def simple_chunk_text(text: str, source: str) -> List[Dict[str, Any]]:
                         "priority": priority,
                         # IMPORTANT: app.py's retrieve() expects meta["source"] for filename heuristics
                         "source": source,
+                        "source_kind": extractions["source_kind"],
+                        "extractions": extractions,
                     },
                 }
             )
@@ -124,7 +140,11 @@ def simple_chunk_text(text: str, source: str) -> List[Dict[str, Any]]:
 # Embeddings & index build
 # ---------------------------
 
-def embed_chunks(model: SentenceTransformer, chunks: List[Dict[str, Any]]) -> np.ndarray:
+def embed_chunks(model: Any, chunks: List[Dict[str, Any]]) -> Any:
+    if np is None:
+        raise RuntimeError(
+            "numpy is not installed. Install requirements.txt before rebuilding the index."
+        )
     # Build embeddings from the exact list we will later pickle.
     texts = [(c.get("text") or "") for c in chunks]
     emb = model.encode(
@@ -138,7 +158,11 @@ def embed_chunks(model: SentenceTransformer, chunks: List[Dict[str, Any]]) -> np
     return emb
 
 
-def build_faiss_index(embeddings: np.ndarray) -> faiss.IndexFlatIP:
+def build_faiss_index(embeddings: Any) -> Any:
+    if faiss is None:
+        raise RuntimeError(
+            "faiss is not installed. Install requirements.txt before rebuilding the index."
+        )
     dim = embeddings.shape[1]
     index = faiss.IndexFlatIP(dim)
     # embeddings are already normalized above; keep this harmless as a belt-and-suspenders
@@ -148,6 +172,19 @@ def build_faiss_index(embeddings: np.ndarray) -> faiss.IndexFlatIP:
 
 
 def main() -> None:
+    if np is None:
+        raise RuntimeError(
+            "numpy is not installed. Install requirements.txt before running ingest.py."
+        )
+    if faiss is None:
+        raise RuntimeError(
+            "faiss is not installed. Install requirements.txt before running ingest.py."
+        )
+    if SentenceTransformer is None:
+        raise RuntimeError(
+            "sentence-transformers is not installed. Install requirements.txt before running ingest.py."
+        )
+
     print(f"DATA_DIR: {DATA_DIR}")
     print(f"INDEX_DIR: {INDEX_DIR}")
 
@@ -236,6 +273,8 @@ def main() -> None:
 
         "chunk_size": CHUNK_SIZE,
         "chunk_overlap": CHUNK_OVERLAP,
+        "chunk_extractions": True,
+        "chunk_extraction_version": 1,
         "files": [str(f.relative_to(ROOT)) for f in files],
 
         # Debug/helpful info

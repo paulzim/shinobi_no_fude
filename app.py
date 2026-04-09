@@ -41,6 +41,7 @@ from extractors.technique_match import (
     is_single_technique_query as _is_single_technique_query,
     technique_name_variants as _tech_name_variants,
 )
+from scribe.text_seam import build_extraction_context, build_grounded_prompt
 
 # --------------------------------------------------------------------
 # Index / metadata lazy loader (Render-safe)
@@ -886,13 +887,11 @@ def call_llm(
 # --------------------------------------------------------------------
 # Prompt & deterministic rendering helpers
 # --------------------------------------------------------------------
-def build_prompt(context: str, question: str) -> str:
-    return (
-        "You must answer using ONLY the context below.\n"
-        "Be concise but complete; avoid filler.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {question}\n\n"
-        "Answer:"
+def build_prompt(context: str, question: str, extraction_context: str = "") -> str:
+    return build_grounded_prompt(
+        context=context,
+        question=question,
+        extraction_context=extraction_context,
     )
 
 
@@ -1017,6 +1016,7 @@ def answer_with_rag(question: str, k: int | None = None) -> Tuple[str, List[Dict
     hits = inject_kihon_passage_if_needed(question, hits)
     hits = inject_techniques_passage_if_needed(question, hits)
     hits = inject_specific_technique_line_if_needed(question, hits)
+    extraction_context = build_extraction_context(hits)
 
     # Fast-path: if we injected a single technique CSV line, answer immediately
     fast = answer_single_technique_if_synthetic(
@@ -1068,7 +1068,7 @@ def answer_with_rag(question: str, k: int | None = None) -> Tuple[str, List[Dict
 
         # fallback LLM for schools
         ctx = build_context(hits)
-        prompt = build_prompt(ctx, question)
+        prompt = build_prompt(ctx, question, extraction_context)
         text, raw = call_llm(prompt)
         if not text.strip():
             return "🔒 Strict (context-only)\n\n❌ Model returned no text.", hits, raw or "{}"
@@ -1122,7 +1122,7 @@ def answer_with_rag(question: str, k: int | None = None) -> Tuple[str, List[Dict
 
     # LLM fallback with retrieved context
     ctx = build_context(hits)
-    prompt = build_prompt(ctx, question)
+    prompt = build_prompt(ctx, question, extraction_context)
     text, raw = call_llm(prompt)
     if not text.strip():
         return "🔒 Strict (context-only)\n\n❌ Model returned no text.", hits, raw or "{}"
