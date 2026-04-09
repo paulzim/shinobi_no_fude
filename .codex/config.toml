@@ -1,0 +1,30 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# Project-scoped Codex configuration for shinobi_no_fude.
+# Codex loads this only after you mark the repo as trusted. :contentReference[oaicite:1]{index=1}
+
+# Use a strong default coding model; adjust if you prefer another.
+model = "gpt-5.4"
+model_provider = "openai"
+
+# Safer interaction defaults.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# Keep network off by default (turn on only if you explicitly need it).
+network_access = false
+# Optional extra writable roots; keep empty unless you know you need them.
+writable_roots = []
+
+# Make sure Codex finds the repo root reliably.
+project_root_markers = [".git"]
+
+# Optional: keep the agent from ballooning context on long sessions.
+# (Tweak later if you want more/less compaction.)
+# model_auto_compact_token_limit = 64000
+# tool_output_token_limit = 12000
+
+# Optional: style/verbosity (uncomment if you care).
+# personality = "pragmatic"
+# model_verbosity = "medium"
