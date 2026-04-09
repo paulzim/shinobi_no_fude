@@ -11,15 +11,9 @@ from .rank import (
     try_answer_rank_taihenjutsu,
     try_answer_rank_kihon_kata,
     try_answer_rank_sanshin_kata,
+    try_answer_rank_weapons,
     try_answer_rank_requirements,   # explicit "requirements for X kyu"
 )
-
-# Optional: rank→weapons mapping, only if implemented in rank.py
-try:
-    from .rank import try_answer_rank_weapons  # type: ignore
-except ImportError:  # pragma: no cover - fallback in case rank weapons isn't implemented
-    def try_answer_rank_weapons(question, passages):
-        return None
 
 
 # ----- Weapon profiles (Hanbo, Kusari Fundo, Katana, Shuriken types, etc.)

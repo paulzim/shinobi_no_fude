@@ -473,6 +473,68 @@ def try_answer_rank_sanshin_kata(
     return f"{header} {_join_human(items)}"
 
 
+def try_answer_rank_weapons(
+    question: str, passages: List[Dict[str, Any]]
+) -> Optional[str]:
+    """
+    Answer either:
+      - rank -> weapon(s): "What weapon do I learn at 8th kyu?"
+      - weapon -> introducing rank: "Which rank introduces katana?"
+
+    Uses only the Weapon: section from nttv rank requirements.txt.
+    """
+    ql = _lc(question)
+    rank_text = _find_rank_text_from_passages(passages)
+    if not rank_text:
+        return None
+
+    def _title_rank(s: str) -> str:
+        m = re.match(r"(\d+)(st|nd|rd|th)\s+kyu", _norm(s), flags=re.IGNORECASE)
+        if m:
+            return f"{m.group(1)}{m.group(2).lower()} Kyu"
+        return "Shodan" if _lc(s) == "shodan" else s.title()
+
+    def _weapon_items_for_rank(rank_label: str) -> List[str]:
+        block = _extract_rank_block(rank_text, rank_label)
+        if not block:
+            return []
+        for raw in block.splitlines():
+            if re.match(r"^\s*Weapon:\s*", raw, flags=re.IGNORECASE):
+                after = raw.split(":", 1)[1].strip()
+                if not after:
+                    return []
+                return _dedup(_split_items([after]))
+        return []
+
+    rank_key = _rank_key_from_question(question)
+    if rank_key:
+        if not any(tok in ql for tok in ["weapon", "weapons", "armed"]):
+            return None
+        items = _weapon_items_for_rank(rank_key)
+        if not items:
+            return None
+        return f"At {_title_rank(rank_key)}: Weapon: {_join_human(items)}."
+
+    asking_intro_rank = any(tok in ql for tok in ["which rank", "what rank", "introduced", "learn", "study"])
+    if not asking_intro_rank:
+        return None
+
+    rank_labels = [m.group("hdr") for m in _RANK_HEADER_RE.finditer(rank_text)]
+    if not rank_labels:
+        return None
+
+    for label in rank_labels:
+        items = _weapon_items_for_rank(label)
+        if not items:
+            continue
+        for item in items:
+            item_l = _lc(item)
+            if item_l and re.search(r"\b" + re.escape(item_l) + r"\b", ql):
+                return f"{item} is introduced at {_title_rank(label)}."
+
+    return None
+
+
 def try_answer_rank_ukemi(
     question: str, passages: List[Dict[str, Any]]
 ) -> Optional[str]:

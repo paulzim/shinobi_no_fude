@@ -1,3 +1,5 @@
+"""Legacy regression notes; intentionally not collected by pytest and may reference old APIs."""
+
 def test_rank_kicks_whitelist():
     from extractors.rank import try_rank
     rank_blob = """=== 8th Kyu ===

@@ -9,7 +9,7 @@ requests==2.32.5
 # --- Retrieval / embeddings / FAISS ---
 faiss-cpu==1.13.0
 sentence-transformers==2.7.0
-transformers==4.44.2
+transformers==4.45.0
 safetensors==0.6.2
 numpy==1.26.4
 pypdf==6.3.0
