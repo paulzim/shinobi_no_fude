@@ -29,7 +29,7 @@ STAGE_TASKS = {
         "Polish the supplied draft for clarity, pacing, and readability while preserving the underlying facts."
     ),
     BlogMode.REWRITE: (
-        "Rewrite the supplied draft with a fresher structure and voice while keeping the core facts and intent."
+        "Rewrite the supplied draft according to the edit instruction while preserving its structure by default."
     ),
 }
 
@@ -40,6 +40,14 @@ STAGE_OUTPUT_HINTS = {
     BlogMode.POLISH: "Return the polished article only.",
     BlogMode.REWRITE: "Return the rewritten article only.",
 }
+
+REWRITE_CONSTRAINTS = [
+    "Preserve the existing title and section order unless the user explicitly asks to restructure.",
+    "Expand only the requested concept or section.",
+    "Do not replace grounded curriculum details with generic martial arts filler.",
+    "Do not invent unsupported meanings, benefits, or symbolism.",
+    "Prefer insertion/expansion over full regeneration.",
+]
 
 
 def _clean(text: str) -> str:
@@ -149,6 +157,11 @@ def build_writer_prompt(
     )
     stage_task = f"## Stage Task\n{STAGE_TASKS[mode]}"
     output_hint = f"## Output\n{STAGE_OUTPUT_HINTS[mode]}"
+    rewrite_constraints = ""
+    if mode == BlogMode.REWRITE:
+        rewrite_constraints = "## Rewrite Constraints\n" + "\n".join(
+            f"- {constraint}" for constraint in REWRITE_CONSTRAINTS
+        )
     request_block = "## Request\n" + _clip(_request_block(request), SECTION_LIMITS["request"])
     anchor_block = "## Anchors\n" + _clip(_anchor_block(anchors), SECTION_LIMITS["anchors"])
     brief_block = "## Brief\n" + _clip(_brief_block(brief), SECTION_LIMITS["brief"])
@@ -164,7 +177,10 @@ def build_writer_prompt(
     if draft_block:
         primary_blocks.append((draft_block, True))
 
-    required_blocks = [intro, stage_task, output_hint, request_block]
+    required_blocks = [intro, stage_task, output_hint]
+    if rewrite_constraints:
+        required_blocks.append(rewrite_constraints)
+    required_blocks.append(request_block)
     parts: list[str] = []
     remaining = max_chars
     for idx, block in enumerate(required_blocks):

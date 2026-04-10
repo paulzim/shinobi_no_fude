@@ -137,3 +137,31 @@ def test_hook_expansion_ignores_draft_input():
 
     assert "## Draft Input" not in prompt
     assert "This draft should not be included" not in prompt
+
+
+def test_rewrite_prompt_includes_structure_preserving_constraints():
+    prompt = build_writer_prompt(
+        _sample_request("rewrite"),
+        _sample_anchors(),
+        _sample_brief(),
+        draft="## Existing Title\n\n## First Section\nKeep this order.",
+    )
+
+    assert "## Rewrite Constraints" in prompt
+    assert "Preserve the existing title and section order unless the user explicitly asks to restructure." in prompt
+    assert "Expand only the requested concept or section." in prompt
+    assert "Do not replace grounded curriculum details with generic martial arts filler." in prompt
+    assert "Do not invent unsupported meanings, benefits, or symbolism." in prompt
+    assert "Prefer insertion/expansion over full regeneration." in prompt
+
+
+def test_rewrite_constraints_do_not_appear_in_draft_prompt():
+    prompt = build_writer_prompt(
+        _sample_request("draft"),
+        _sample_anchors(),
+        _sample_brief(),
+        outline="## Outline",
+    )
+
+    assert "## Rewrite Constraints" not in prompt
+    assert "Prefer insertion/expansion over full regeneration." not in prompt
