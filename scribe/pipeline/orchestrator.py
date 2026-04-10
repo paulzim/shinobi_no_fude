@@ -13,6 +13,7 @@ from scribe.pipeline.blog_mode import (
     build_brief_result,
 )
 from scribe.writers.prompt_builder import build_writer_prompt
+from scribe.writers.rewrite_commands import parse_rewrite_command
 
 
 LLMCallable = Callable[..., tuple[str, str]]
@@ -280,7 +281,8 @@ def rewrite_with_instruction(
         brief_max_chars=brief_max_chars,
         anchor_max_chars=anchor_max_chars,
     )
-    targeted_draft = f"Edit instruction: {instruction.strip()}\n\nDraft:\n{draft.strip()}"
+    command = parse_rewrite_command(instruction, draft=draft)
+    targeted_draft = f"Edit instruction: {command.instruction}\n\nDraft:\n{draft.strip()}"
     prompt = build_writer_prompt(
         rewrite_request,
         anchors,
@@ -297,6 +299,7 @@ def rewrite_with_instruction(
         metadata={
             "raw": raw,
             "prompt_chars": len(prompt),
-            "instruction": instruction.strip(),
+            "instruction": command.instruction,
+            "command": command,
         },
     )

@@ -97,8 +97,8 @@ def test_polish_and_rewrite_are_mockable_headlessly():
     polished = polish_draft(req, "A draft that needs tightening.", retriever=retriever, llm=llm)
     rewritten = rewrite_with_instruction(
         req,
-        "A draft that needs a new angle.",
-        "Make it warmer and more direct.",
+        "## Intro\nA draft that needs a new angle.",
+        "More direct",
         retriever=retriever,
         llm=llm,
     )
@@ -107,5 +107,7 @@ def test_polish_and_rewrite_are_mockable_headlessly():
     assert rewritten.draft.body == "Targeted rewrite with the requested tone."
     assert "Stage: polish" in llm.prompts[0]
     assert "Stage: rewrite" in llm.prompts[1]
-    assert "Make it warmer and more direct." in llm.prompts[1]
+    assert "Make the draft more direct" in llm.prompts[1]
+    assert "raw chunk" not in llm.prompts[1].lower()
+    assert rewritten.metadata["command"].preset == "more_direct"
     assert retriever.call_count == 2
