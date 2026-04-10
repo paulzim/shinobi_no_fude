@@ -174,3 +174,31 @@ def test_polish_and_rewrite_are_mockable_headlessly():
     assert "raw chunk" not in llm.prompts[1].lower()
     assert rewritten.metadata["command"].preset == "more_direct"
     assert retriever.call_count == 2
+
+
+def test_rewrite_prompt_receives_full_normal_length_draft():
+    retriever = Mock(return_value=_passages())
+    llm = FakeLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+    paragraphs = [
+        (
+            f"Paragraph {idx}: Hanbo practice gives the article a steady rhythm, "
+            "with enough concrete detail to resemble a normal blog draft."
+        )
+        for idx in range(1, 120)
+    ]
+    long_draft = "\n\n".join(paragraphs) + "\n\nFINAL_KATANA_DETAIL_MARKER"
+
+    rewrite_with_instruction(
+        req,
+        long_draft,
+        "add more detail on katana",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    prompt = llm.prompts[0]
+    assert "Edit instruction: add more detail on katana" in prompt
+    assert "Paragraph 119" in prompt
+    assert "FINAL_KATANA_DETAIL_MARKER" in prompt
+    assert len(prompt) <= BlogModeSettings().active_context_limit

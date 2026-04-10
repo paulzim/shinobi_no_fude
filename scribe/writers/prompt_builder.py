@@ -148,11 +148,14 @@ def build_writer_prompt(
     anchor_block = "## Anchors\n" + _clip(_anchor_block(anchors), SECTION_LIMITS["anchors"])
     brief_block = "## Brief\n" + _clip(_brief_block(brief), SECTION_LIMITS["brief"])
 
-    optional_blocks: list[str] = []
+    optional_blocks: list[tuple[str, bool]] = []
     if outline:
-        optional_blocks.append("## Outline Input\n" + _clip(outline, SECTION_LIMITS["outline"]))
+        optional_blocks.append(("## Outline Input\n" + _clip(outline, SECTION_LIMITS["outline"]), False))
     if draft:
-        optional_blocks.append("## Draft Input\n" + _clip(draft, SECTION_LIMITS["draft"]))
+        if mode == BlogMode.REWRITE:
+            optional_blocks.append(("## Draft Input\n" + draft.strip(), True))
+        else:
+            optional_blocks.append(("## Draft Input\n" + _clip(draft, SECTION_LIMITS["draft"]), False))
 
     required_blocks = [intro, stage_task, output_hint, request_block, anchor_block, brief_block]
     parts: list[str] = []
@@ -167,8 +170,8 @@ def build_writer_prompt(
             reserve_for_rest=reserve_for_rest,
         )
 
-    for block in optional_blocks:
-        remaining = _add_block(parts, block, remaining=remaining, required=False)
+    for block, required in optional_blocks:
+        remaining = _add_block(parts, block, remaining=remaining, required=required)
 
     prompt = "".join(parts).strip()
     if len(prompt) > max_chars:
