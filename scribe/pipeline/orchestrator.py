@@ -18,6 +18,7 @@ from scribe.pipeline.rank_overview import (
     build_rank_overview_context,
     detect_rank_overview_request,
     rank_overview_retrieval_query,
+    validate_rank_overview_grounding,
 )
 from scribe.writers.prompt_builder import build_writer_prompt
 from scribe.writers.rewrite_commands import parse_rewrite_command
@@ -446,6 +447,41 @@ def _fallback_items(text: str, fallback: str) -> list[str]:
     return items[:4] or [fallback]
 
 
+def _rank_validation_abort_result(
+    request: BlogRequest,
+    brief: BriefResult,
+    anchors: AnchorResult,
+    validation: dict[str, Any],
+    *,
+    mode: BlogMode,
+    settings: BlogModeSettings,
+) -> DraftPipelineResult:
+    warning = (
+        "Draft generation aborted: rank overview grounding failed validation. "
+        + "; ".join(validation.get("warnings") or ["Unknown rank grounding issue."])
+    )
+    return DraftPipelineResult(
+        draft=DraftResult(
+            title=request.hook_title,
+            body=warning,
+            sources_used=list(brief.sources_used),
+            verify_claims=[],
+        ),
+        anchors=anchors,
+        brief=brief,
+        metadata={
+            "aborted": True,
+            "abort_reason": "rank_grounding_validation_failed",
+            "rank_validation": validation,
+            "prompt_chars": 0,
+            "raw": "",
+            "temperature": settings.temperature_for(mode),
+            "max_output_tokens": settings.max_tokens_for(mode),
+            "verify_claims": {"enabled": False, "skipped": "draft_aborted"},
+        },
+    )
+
+
 def build_around_hook(
     request: BlogRequest,
     *,
@@ -553,6 +589,29 @@ def draft_from_outline(
         brief_max_chars=cfg.brief_char_limit(brief_max_chars),
         anchor_max_chars=cfg.prompt_char_limit(anchor_max_chars or 900),
     )
+    rank_key = (
+        anchors.metadata.get("rank")
+        or brief.metadata.get("rank")
+        or detect_rank_overview_request(_build_retrieval_query(draft_request))
+    )
+    validation: dict[str, Any] | None = None
+    if rank_key and (anchors.metadata.get("rank_overview") or brief.metadata.get("rank_overview")):
+        validation = validate_rank_overview_grounding(
+            draft_request,
+            anchors,
+            brief,
+            rank_key=str(rank_key),
+        )
+        if not validation["ok"]:
+            return _rank_validation_abort_result(
+                request,
+                brief,
+                anchors,
+                validation,
+                mode=BlogMode.DRAFT,
+                settings=cfg,
+            )
+
     prompt = build_writer_prompt(
         draft_request,
         anchors,
@@ -578,6 +637,7 @@ def draft_from_outline(
             "prompt_chars": len(prompt),
             "temperature": cfg.temperature_for(BlogMode.DRAFT),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.DRAFT),
+            "rank_validation": validation or {"checked": False},
             "verify_claims": verify_metadata,
         },
     )

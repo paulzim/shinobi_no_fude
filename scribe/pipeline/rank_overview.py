@@ -72,6 +72,22 @@ _CONTINUATION_FIELDS = {
     "Kyusho",
     "Other",
 }
+_GEAR_ALIASES = {
+    "rokushakubo": {"rokushakubo", "rokushaku bo", "rokushaku-bo"},
+    "hanbo": {"hanbo", "short staff", "three-foot staff", "3-foot staff"},
+    "katana": {"katana", "daito", "long sword"},
+    "knife": {"knife", "tanto", "dagger"},
+    "shoto": {"shoto", "short sword"},
+    "kusari fundo": {"kusari fundo", "manriki-gusari", "weighted chain"},
+    "jutte": {"jutte"},
+    "tessen": {"tessen", "iron fan"},
+    "kunai": {"kunai"},
+    "shuriken": {"shuriken", "bo shuriken", "senban shuriken", "throwing knives"},
+    "shuko": {"shuko", "hand claws"},
+    "naginata": {"naginata"},
+    "kyoketsu shoge": {"kyoketsu shoge", "kyoketsu-shoge"},
+    "firearms": {"firearms"},
+}
 
 
 def detect_rank_overview_request(text: str) -> str | None:
@@ -171,6 +187,94 @@ def detect_rank_scoped_request(text: str) -> str | None:
     if _asks_for_rank_comparison(text):
         return None
     return ranks[0]
+
+
+def _request_text(request: BlogRequest) -> str:
+    parts = [request.hook_title]
+    if request.premise:
+        parts.append(request.premise)
+    parts.extend(request.include_terms)
+    return " ".join(part for part in parts if part)
+
+
+def _contains_term(text: str, term: str) -> bool:
+    return re.search(
+        rf"(?<![a-z0-9-]){re.escape(term.lower())}(?![a-z0-9-])",
+        text.lower(),
+    ) is not None
+
+
+def _split_gear_items(value: str) -> list[str]:
+    return [
+        _norm(item).lower()
+        for item in re.split(r"[;,]", value or "")
+        if _norm(item)
+    ]
+
+
+def _canonical_gear_for_text(text: str) -> set[str]:
+    found: set[str] = set()
+    for canonical, aliases in _GEAR_ALIASES.items():
+        if any(_contains_term(text, alias) for alias in aliases):
+            found.add(canonical)
+    return found
+
+
+def _allowed_gear_from_grounding(text: str) -> set[str]:
+    allowed: set[str] = set()
+    for line in (text or "").splitlines():
+        match = re.match(r"^\s*-?\s*Weapon:\s*(?P<value>.+)$", line, flags=re.IGNORECASE)
+        if not match:
+            continue
+        for item in _split_gear_items(match.group("value")):
+            allowed.update(_canonical_gear_for_text(item))
+    return allowed
+
+
+def validate_rank_overview_grounding(
+    request: BlogRequest,
+    anchors: AnchorResult,
+    brief: BriefResult,
+    *,
+    rank_key: str,
+) -> dict[str, Any]:
+    """Validate that rank-overview grounding did not drift into adjacent ranks."""
+    inspected = "\n".join(
+        part
+        for part in [anchors.anchor_block, brief.brief_markdown]
+        if part
+    )
+    request_context = _request_text(request)
+    allow_rank_neighbors = _asks_for_rank_comparison(request_context)
+    ranks = _rank_mentions(inspected)
+    unrelated_ranks = [
+        rank for rank in ranks if rank != rank_key and not allow_rank_neighbors
+    ]
+
+    mentioned_gear = _canonical_gear_for_text(inspected)
+    allowed_gear = _allowed_gear_from_grounding(inspected)
+    allowed_gear.update(_canonical_gear_for_text(request_context))
+    unrelated_gear = sorted(mentioned_gear - allowed_gear)
+
+    warnings: list[str] = []
+    if unrelated_ranks:
+        warnings.append(
+            "Unexpected rank references: " + ", ".join(unrelated_ranks)
+        )
+    if unrelated_gear:
+        warnings.append(
+            "Unexpected weapon/gear references: " + ", ".join(unrelated_gear)
+        )
+
+    return {
+        "ok": not warnings,
+        "rank": rank_key,
+        "checked": True,
+        "allowed_rank_neighbors": allow_rank_neighbors,
+        "unrelated_ranks": unrelated_ranks,
+        "unrelated_gear": unrelated_gear,
+        "warnings": warnings,
+    }
 
 
 def rank_scoped_passages(

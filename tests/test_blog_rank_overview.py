@@ -1,6 +1,7 @@
 import pathlib
 
-from scribe.models import BlogRequest
+from scribe.models import AnchorResult, BlogRequest, BriefResult
+import scribe.pipeline.orchestrator as orchestrator
 from scribe.pipeline.orchestrator import build_around_hook, draft_from_outline
 from scribe.pipeline.rank_overview import detect_rank_overview_request
 
@@ -96,3 +97,99 @@ def test_rank_overview_draft_prompt_uses_only_7th_kyu_fact_sheet():
     assert "Rokushakubo" not in prompt
     assert "Knife; Shoto" not in prompt
     assert "Hanbo" not in prompt
+
+
+def _contaminated_rank_context(text: str) -> tuple[BriefResult, AnchorResult]:
+    metadata = {"rank_overview": True, "rank": "6th kyu"}
+    brief = BriefResult(
+        title="6th Kyu overview",
+        brief_markdown=text,
+        sources_used=["nttv rank requirements.txt"],
+        metadata=dict(metadata),
+    )
+    anchors = AnchorResult(
+        anchor_block=text,
+        anchors=[line for line in text.splitlines() if line.startswith("- ")],
+        metadata=dict(metadata),
+    )
+    return brief, anchors
+
+
+def test_rank_overview_draft_aborts_on_neighboring_rank_contamination(monkeypatch):
+    contaminated = "\n".join(
+        [
+            "### Blog Brief",
+            "### Exact Rank Requirements",
+            "- Rank: 6th Kyu",
+            "- Weapon: Rokushakubo",
+            "- 7th Kyu material: Katana cuts",
+            "- 8th Kyu material: Hanbo basics",
+            "- 9th Kyu material: foundational kamae",
+        ]
+    )
+    brief, anchors = _contaminated_rank_context(contaminated)
+    llm = CaptureLLM()
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_collect_context",
+        lambda *args, **kwargs: (brief, anchors),
+    )
+
+    result = draft_from_outline(
+        BlogRequest(hook_title="What are the skills for 6th kyu?"),
+        "## Outline\n- Stay focused on 6th kyu.",
+        retriever=CaptureRetriever(),
+        llm=llm,
+    )
+
+    assert llm.prompts == []
+    assert result.metadata["aborted"] is True
+    assert result.metadata["abort_reason"] == "rank_grounding_validation_failed"
+    assert result.metadata["rank_validation"]["ok"] is False
+    assert set(result.metadata["rank_validation"]["unrelated_ranks"]) == {
+        "7th kyu",
+        "8th kyu",
+        "9th kyu",
+    }
+    assert "Draft generation aborted" in result.draft.body
+    assert "Unexpected rank references" in result.draft.body
+
+
+def test_rank_overview_draft_aborts_on_unrelated_gear_contamination(monkeypatch):
+    contaminated = "\n".join(
+        [
+            "### Blog Brief",
+            "### Exact Rank Requirements",
+            "- Rank: 6th Kyu",
+            "- Weapon: Rokushakubo",
+            "### Optional Supporting Definitions",
+            "- Katana: long sword",
+            "- Hanbo: three-foot staff",
+        ]
+    )
+    brief, anchors = _contaminated_rank_context(contaminated)
+    llm = CaptureLLM()
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_collect_context",
+        lambda *args, **kwargs: (brief, anchors),
+    )
+
+    result = draft_from_outline(
+        BlogRequest(hook_title="What are the skills for 6th kyu?"),
+        "## Outline\n- Stay focused on 6th kyu.",
+        retriever=CaptureRetriever(),
+        llm=llm,
+    )
+
+    assert llm.prompts == []
+    assert result.metadata["aborted"] is True
+    assert result.metadata["rank_validation"]["ok"] is False
+    assert result.metadata["rank_validation"]["unrelated_ranks"] == []
+    assert set(result.metadata["rank_validation"]["unrelated_gear"]) == {
+        "hanbo",
+        "katana",
+    }
+    assert "Unexpected weapon/gear references" in result.draft.body
