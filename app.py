@@ -41,6 +41,9 @@ from extractors.technique_match import (
     is_single_technique_query as _is_single_technique_query,
     technique_name_variants as _tech_name_variants,
 )
+from scribe.images import build_image_prompt_package, render_image_prompt_package
+from scribe.models import BlogRequest, DraftResult
+from scribe.pipeline import build_around_hook, draft_from_outline, polish_draft, rewrite_with_instruction
 from scribe.text_seam import build_extraction_context, build_grounded_prompt
 
 # --------------------------------------------------------------------
@@ -1153,6 +1156,99 @@ st.set_page_config(page_title="NTTV Chatbot (RAG)", page_icon="🥋", layout="wi
 
 st.title("🥋 NTTV Chatbot (RAG)")
 
+
+def _init_blog_state() -> None:
+    defaults = {
+        "blog_hook_title": "",
+        "blog_premise": "",
+        "blog_outline_text": "",
+        "blog_draft_text": "",
+        "blog_rewrite_instruction": "More direct",
+        "blog_image_section_text": "",
+        "blog_image_style": "editorial_ink_wash",
+        "blog_anchors": None,
+        "blog_brief": None,
+        "blog_draft": None,
+        "blog_last_status": "",
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
+
+
+def _blog_request_from_state() -> BlogRequest:
+    return BlogRequest(
+        hook_title=st.session_state.get("blog_hook_title", "").strip(),
+        premise=st.session_state.get("blog_premise", "").strip() or None,
+    )
+
+
+def _first_blog_section(text: str, max_chars: int = 1000) -> str:
+    text = (text or "").strip()
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    start = 0
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            start = idx
+            break
+
+    selected: list[str] = []
+    for line in lines[start:]:
+        if selected and line.lstrip().startswith("#"):
+            break
+        selected.append(line)
+        if sum(len(item) + 1 for item in selected) >= max_chars:
+            break
+
+    section = "\n".join(selected).strip() or text[:max_chars].strip()
+    if len(section) > max_chars:
+        section = section[: max_chars - 3].rstrip() + "..."
+    return section
+
+
+def _store_blog_pipeline_result(result, status: str) -> None:
+    st.session_state["blog_anchors"] = result.anchors
+    st.session_state["blog_brief"] = result.brief
+    st.session_state["blog_draft"] = result.draft
+    st.session_state["blog_draft_text"] = result.draft.body
+    st.session_state["blog_last_status"] = status
+
+    if not st.session_state.get("blog_image_section_text"):
+        st.session_state["blog_image_section_text"] = _first_blog_section(result.draft.body)
+
+
+def _blog_sources_used() -> list[str]:
+    sources: list[str] = []
+    draft = st.session_state.get("blog_draft")
+    brief = st.session_state.get("blog_brief")
+
+    if isinstance(draft, DraftResult):
+        sources.extend(draft.sources_used)
+    if brief is not None:
+        sources.extend(getattr(brief, "sources_used", []) or [])
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for source in sources:
+        if source and source not in seen:
+            seen.add(source)
+            out.append(source)
+    return out
+
+
+def _current_blog_draft() -> DraftResult:
+    draft = st.session_state.get("blog_draft")
+    body = st.session_state.get("blog_draft_text", "")
+    if isinstance(draft, DraftResult) and draft.body == body:
+        return draft
+    return DraftResult(
+        title=st.session_state.get("blog_hook_title", "").strip() or "Blog draft",
+        body=body,
+        sources_used=_blog_sources_used(),
+    )
+
 with st.sidebar:
     st.markdown("### Options")
     show_debug = st.checkbox("Show debugging", value=True)
@@ -1200,32 +1296,192 @@ with st.sidebar:
             st.write("**FAISS candidate 2:**", faiss_guess_2, "✅" if os.path.exists(faiss_guess_2) else "❌")
     
 
-q = st.text_input("Ask a question:", value="", placeholder="e.g., what is omote gyaku")
-go = st.button("Ask", type="primary")
+_init_blog_state()
+qa_tab, blog_tab = st.tabs(["Q&A", "Blog mode"])
 
-if go and q.strip():
+with qa_tab:
+    q = st.text_input(
+        "Ask a question:",
+        value="",
+        placeholder="e.g., what is omote gyaku",
+        key="qa_question",
+    )
+    go = st.button("Ask", type="primary", key="qa_ask")
+
+    if go and q.strip():
+        try:
+            with st.spinner("Thinking..."):
+                ans, top_passages, raw_json = answer_with_rag(q.strip())
+        except Exception as e:
+            st.error(f"Backend error: {e}")
+            if show_debug:
+                st.exception(e)
+            st.stop()
+
+        st.markdown("### Answer")
+        st.write(ans)
+
+        if show_debug:
+            st.markdown("### Retrieved sources")
+            for i, h in enumerate(top_passages, 1):
+                name = os.path.basename(h.get("source") or "")
+                st.write(
+                    f"[{i}] {name} — score {h.get('score', 0):.3f} — "
+                    f"priority {int(h.get('meta',{}).get('priority',0))}"
+                )
+            st.markdown("### Raw model response (JSON-ish)")
+            st.code(raw_json, language="json")
+
+    else:
+        st.info("Enter a question and click **Ask**.")
+
+with blog_tab:
+    st.markdown("### Blog mode")
+    st.caption("A separate writing pipeline: extractors and RAG become anchors, then the writer drafts from them.")
+
+    st.text_input(
+        "Hook/title",
+        placeholder="e.g., Why Hanbo Still Matters",
+        key="blog_hook_title",
+    )
+    st.text_area(
+        "Premise (optional)",
+        placeholder="Optional angle, audience, or tension to explore.",
+        height=90,
+        key="blog_premise",
+    )
+
+    build_col, draft_col, polish_col, rewrite_col = st.columns(4)
+    build_clicked = build_col.button("Build around this hook", key="blog_build")
+    draft_clicked = draft_col.button("Draft", key="blog_draft_button")
+    polish_clicked = polish_col.button("Polish", key="blog_polish")
+    rewrite_clicked = rewrite_col.button("Rewrite", key="blog_rewrite")
+
     try:
-        with st.spinner("Thinking..."):
-            ans, top_passages, raw_json = answer_with_rag(q.strip())
+        if build_clicked:
+            req = _blog_request_from_state()
+            with st.spinner("Building outline, anchors, and brief..."):
+                result = build_around_hook(req, retriever=retrieve, llm=call_llm)
+            st.session_state["blog_outline_text"] = result.outline
+            st.session_state["blog_anchors"] = result.anchors
+            st.session_state["blog_brief"] = result.brief
+            st.session_state["blog_last_status"] = "Built outline, anchors, and brief."
+
+        if draft_clicked:
+            req = _blog_request_from_state()
+            outline = st.session_state.get("blog_outline_text", "").strip()
+            if not outline:
+                st.warning("Build or paste an outline before drafting.")
+            else:
+                with st.spinner("Drafting from outline..."):
+                    result = draft_from_outline(req, outline, retriever=retrieve, llm=call_llm)
+                _store_blog_pipeline_result(result, "Draft generated.")
+
+        if polish_clicked:
+            req = _blog_request_from_state()
+            draft_text = st.session_state.get("blog_draft_text", "").strip()
+            if not draft_text:
+                st.warning("Generate or paste a draft before polishing.")
+            else:
+                with st.spinner("Polishing draft..."):
+                    result = polish_draft(req, draft_text, retriever=retrieve, llm=call_llm)
+                _store_blog_pipeline_result(result, "Draft polished.")
+
+        if rewrite_clicked:
+            req = _blog_request_from_state()
+            draft_text = st.session_state.get("blog_draft_text", "").strip()
+            instruction = st.session_state.get("blog_rewrite_instruction", "").strip()
+            if not draft_text:
+                st.warning("Generate or paste a draft before rewriting.")
+            elif not instruction:
+                st.warning("Add a rewrite instruction first.")
+            else:
+                with st.spinner("Rewriting draft..."):
+                    result = rewrite_with_instruction(
+                        req,
+                        draft_text,
+                        instruction,
+                        retriever=retrieve,
+                        llm=call_llm,
+                    )
+                _store_blog_pipeline_result(result, "Draft rewritten.")
     except Exception as e:
-        st.error(f"Backend error: {e}")
+        st.error(f"Blog mode error: {e}")
         if show_debug:
             st.exception(e)
-        st.stop()
 
-    st.markdown("### Answer")
-    st.write(ans)
+    if st.session_state.get("blog_last_status"):
+        st.success(st.session_state["blog_last_status"])
 
-    if show_debug:
-        st.markdown("### Retrieved sources")
-        for i, h in enumerate(top_passages, 1):
-            name = os.path.basename(h.get("source") or "")
-            st.write(
-                f"[{i}] {name} — score {h.get('score', 0):.3f} — "
-                f"priority {int(h.get('meta',{}).get('priority',0))}"
-            )
-        st.markdown("### Raw model response (JSON-ish)")
-        st.code(raw_json, language="json")
+    st.text_area(
+        "Outline",
+        height=220,
+        key="blog_outline_text",
+        help="Generated by Build around this hook, but editable before Draft.",
+    )
 
-else:
-    st.info("Enter a question and click **Ask**.")
+    st.text_area(
+        "Draft",
+        height=360,
+        key="blog_draft_text",
+        help="Generated by Draft/Polish/Rewrite, but editable between passes.",
+    )
+
+    st.text_input(
+        "Rewrite instruction",
+        placeholder="Try: Cut 20%, More story, More direct, Rewrite intro",
+        key="blog_rewrite_instruction",
+    )
+
+    with st.expander("Sources used", expanded=False):
+        sources = _blog_sources_used()
+        if sources:
+            for source in sources:
+                st.write(f"- {source}")
+        else:
+            st.info("No sources yet. Build or draft to populate this panel.")
+
+        anchors = st.session_state.get("blog_anchors")
+        if anchors is not None and getattr(anchors, "anchor_block", ""):
+            st.markdown("#### Anchors")
+            st.markdown(anchors.anchor_block)
+
+        brief = st.session_state.get("blog_brief")
+        if brief is not None and getattr(brief, "brief_markdown", ""):
+            st.markdown("#### Brief")
+            st.markdown(brief.brief_markdown)
+
+    with st.expander("Image prompts", expanded=False):
+        st.caption("Prompt package only. No image backend is called from this panel.")
+
+        if st.session_state.get("blog_draft_text") and not st.session_state.get("blog_image_section_text"):
+            st.session_state["blog_image_section_text"] = _first_blog_section(st.session_state["blog_draft_text"])
+
+        st.text_area(
+            "Selected section text",
+            height=160,
+            key="blog_image_section_text",
+            help="Paste the section you want visualized, or use the draft opening.",
+        )
+        st.selectbox(
+            "Style preset",
+            options=["editorial_ink_wash", "dojo_diagram"],
+            key="blog_image_style",
+        )
+
+        draft_text = st.session_state.get("blog_draft_text", "").strip()
+        section_text = st.session_state.get("blog_image_section_text", "").strip()
+        if draft_text and section_text:
+            try:
+                package = build_image_prompt_package(
+                    _current_blog_draft(),
+                    section_text,
+                    style_preset_name=st.session_state["blog_image_style"],
+                )
+                st.code(render_image_prompt_package(package), language="markdown")
+            except Exception as e:
+                st.error(f"Could not build image prompt package: {e}")
+                if show_debug:
+                    st.exception(e)
+        else:
+            st.info("Add a draft and selected section to preview an image prompt package.")
