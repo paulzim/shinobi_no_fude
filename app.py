@@ -11,6 +11,12 @@ import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()
 
+st.set_page_config(
+    page_title="Shinobi no Fude 忍びの筆",
+    page_icon="assets/shinobi_icon.png",
+    layout="wide",
+)
+
 
 # Vector index
 try:
@@ -1155,19 +1161,21 @@ def answer_with_rag(question: str, k: int | None = None) -> Tuple[str, List[Dict
 # --------------------------------------------------------------------
 # Streamlit UI
 # --------------------------------------------------------------------
-st.set_page_config(page_title="Shinobi no Fude", page_icon="筆", layout="wide")
-
-st.markdown(
-    """
-    <div style="padding: 0.25rem 0 1rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(49, 51, 63, 0.16);">
-      <h1 style="margin: 0; line-height: 1.08;">Shinobi no Fude 忍びの筆</h1>
-      <div style="margin-top: 0.35rem; font-size: 1.08rem; color: rgba(49, 51, 63, 0.70); letter-spacing: 0.02em;">
-        The Shinobi's Brush
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+logo_col, title_col = st.columns([0.12, 0.88])
+with logo_col:
+    st.image("assets/shinobi_icon.png", width=80)
+with title_col:
+    st.markdown(
+        """
+        <div style="padding: 0.1rem 0 1rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(49, 51, 63, 0.16);">
+          <h1 style="margin: 0; line-height: 1.08;">Shinobi no Fude 忍びの筆</h1>
+          <div style="margin-top: 0.35rem; font-size: 1.08rem; color: rgba(49, 51, 63, 0.70); letter-spacing: 0.02em;">
+            The Shinobi's Brush
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _init_blog_state() -> None:
