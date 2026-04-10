@@ -48,6 +48,53 @@ class CaptureRetriever:
         return _rank_passages()
 
 
+class SixthKyuRegressionLLM:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        system: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        self.prompts.append(prompt)
+        low = prompt.lower()
+
+        assert "stage: draft" in low
+        assert "what are the skills for 6th kyu?" in low
+        assert "give an overview of 6th kyu for a beginning student." in low
+        assert "### exact rank requirements" in low
+        assert "## rank/curriculum draft constraints" in low
+        assert "preserve rank specificity" in low
+        assert "6th kyu" in low
+        assert "rokushakubo" in low
+
+        for contaminant in [
+            "7th kyu",
+            "8th kyu",
+            "9th kyu",
+            "sassho-ouchi",
+            "kote-ouchi",
+            "black gi",
+            "hanbo",
+            "bokken",
+            "tanto",
+        ]:
+            assert contaminant not in low
+
+        return (
+            "## 6th Kyu Overview\n\n"
+            "For a beginning student, 6th kyu stays centered on the Rokushakubo material listed "
+            "in the rank requirements: weapon kamae, basic staff strikes, spinning work, "
+            "taihenjutsu, striking, grappling and escapes, and nage waza. The scope should stay "
+            "with those listed requirements rather than expanding into other ranks.",
+            "{}",
+        )
+
+
 def test_detect_rank_overview_request_for_6th_kyu_skills():
     assert detect_rank_overview_request("What are the skills for 6th kyu?") == "6th kyu"
 
@@ -97,6 +144,66 @@ def test_rank_overview_draft_prompt_uses_only_7th_kyu_fact_sheet():
     assert "Rokushakubo" not in prompt
     assert "Knife; Shoto" not in prompt
     assert "Hanbo" not in prompt
+
+
+def test_exact_6th_kyu_beginner_overview_regression():
+    retriever = CaptureRetriever()
+    llm = SixthKyuRegressionLLM()
+    req = BlogRequest(
+        hook_title="What are the skills for 6th kyu?",
+        premise="Give an overview of 6th kyu for a beginning student.",
+    )
+
+    result = draft_from_outline(
+        req,
+        "## Outline\n- Explain only the 6th kyu requirements.",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    assert result.metadata["rank_validation"]["ok"] is True
+    assert result.anchors.metadata["rank"] == "6th kyu"
+    assert result.brief.metadata["rank"] == "6th kyu"
+    assert "6th kyu" in retriever.calls[0][0].lower()
+    assert "### Exact Rank Requirements" in result.brief.brief_markdown
+    assert "### Optional Supporting Definitions" in result.brief.brief_markdown
+
+    grounding = "\n".join([result.anchors.anchor_block, result.brief.brief_markdown]).lower()
+    draft = result.draft.body.lower()
+
+    assert "6th kyu" in grounding
+    assert "rokushakubo" in grounding
+    assert "6th kyu" in draft
+    assert "rokushakubo" in draft
+
+    for forbidden in [
+        "7th kyu",
+        "8th kyu",
+        "9th kyu",
+        "sassho-ouchi",
+        "kote-ouchi",
+        "conditioning",
+        "sparring",
+        "meditation",
+        "black gi",
+        "hanbo",
+        "bokken",
+        "tanto",
+    ]:
+        assert forbidden not in grounding
+        assert forbidden not in draft
+
+    prompt = llm.prompts[0]
+    assert "Do not generalize with generic martial arts filler when exact source facts are sparse." in prompt
+    assert (
+        "Do not add conditioning, sparring, meditation, emotional control, or gear sections unless grounded in provided sources."
+        in prompt
+    )
+    assert "Sassho-ouchi" not in prompt
+    assert "Kote-ouchi" not in prompt
+    assert "Black Gi" not in prompt
+    assert "Bokken" not in prompt
+    assert "Tanto" not in prompt
 
 
 def _contaminated_rank_context(text: str) -> tuple[BriefResult, AnchorResult]:
