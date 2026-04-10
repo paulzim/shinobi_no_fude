@@ -27,6 +27,34 @@ def _passages() -> list[dict]:
     ]
 
 
+def _katana_passages() -> list[dict]:
+    return [
+        {
+            "text": "\n".join(
+                [
+                    "7th Kyu",
+                    "Weapon: Katana",
+                    "Training note: Katana is introduced as a curriculum weapon.",
+                ]
+            ),
+            "source": "data/katana focus.txt",
+            "meta": {"source": "data/katana focus.txt"},
+        }
+    ]
+
+
+class RecordingRetriever:
+    def __init__(self, focused: list[dict] | None = None) -> None:
+        self.focused = focused or []
+        self.calls: list[tuple[str, int]] = []
+
+    def __call__(self, query: str, *, k: int) -> list[dict]:
+        self.calls.append((query, k))
+        if "katana" in query.lower():
+            return self.focused
+        return _passages()
+
+
 class FakeLLM:
     def __init__(self) -> None:
         self.prompts: list[str] = []
@@ -202,6 +230,57 @@ def test_rewrite_prompt_receives_full_normal_length_draft():
     assert "Paragraph 119" in prompt
     assert "FINAL_KATANA_DETAIL_MARKER" in prompt
     assert len(prompt) <= BlogModeSettings().active_context_limit
+
+
+def test_rewrite_instruction_with_focus_term_adds_small_focused_brief():
+    retriever = RecordingRetriever(focused=_katana_passages())
+    llm = FakeLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+    draft = "## Title\n\n## Training Detail\nCurrent draft body.\n\nFINAL_DRAFT_MARKER"
+
+    result = rewrite_with_instruction(
+        req,
+        draft,
+        "add more detail on katana",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    prompt = llm.prompts[0]
+    assert len(retriever.calls) == 2
+    assert "katana curriculum details" in retriever.calls[1][0]
+    assert retriever.calls[1][1] == BlogModeSettings().rewrite_focus_top_k_retrieve
+    assert "FINAL_DRAFT_MARKER" in prompt
+    assert "## Focused Brief" in prompt
+    assert "Focused rewrite detail: katana" in prompt
+    assert "katana focus.txt" in prompt
+    assert "katana focus.txt" in result.draft.sources_used
+    assert result.metadata["focused_rewrite"]["focus_term"] == "katana"
+    assert result.metadata["focused_rewrite"]["char_count"] <= BlogModeSettings().rewrite_focus_budget_chars
+
+
+def test_rewrite_instruction_without_focus_term_skips_focused_retrieval():
+    retriever = RecordingRetriever(focused=_katana_passages())
+    llm = FakeLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+    draft = "## Title\n\nCurrent draft body.\n\nFINAL_DRAFT_MARKER"
+
+    result = rewrite_with_instruction(
+        req,
+        draft,
+        "More direct",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    prompt = llm.prompts[0]
+    assert len(retriever.calls) == 1
+    assert "FINAL_DRAFT_MARKER" in prompt
+    assert "## Focused Brief" not in prompt
+    assert result.metadata["focused_rewrite"] == {
+        "focus_term": None,
+        "retrieval_attempted": False,
+    }
 
 
 def test_polish_prompt_receives_full_normal_length_draft():

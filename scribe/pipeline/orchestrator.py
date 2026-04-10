@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import re
 from typing import Any, Callable
 
 from scribe.config import DEFAULT_BLOG_MODE_SETTINGS, BlogModeSettings
@@ -19,6 +20,32 @@ from scribe.writers.rewrite_commands import parse_rewrite_command
 
 LLMCallable = Callable[..., tuple[str, str]]
 RetrieverCallable = Callable[..., list[dict[str, Any]]]
+
+
+DOMAIN_FOCUS_TERMS = {
+    "ichimonji no kata": "Ichimonji no Kata",
+    "omote gyaku": "omote gyaku",
+    "ura gyaku": "ura gyaku",
+    "oni kudaki": "oni kudaki",
+    "musha dori": "musha dori",
+    "ganseki otoshi": "ganseki otoshi",
+    "kihon happo": "kihon happo",
+    "sanshin": "sanshin",
+    "katana": "katana",
+    "hanbo": "hanbo",
+    "hanbō": "hanbo",
+    "tanto": "tanto",
+    "tantō": "tanto",
+    "shoto": "shoto",
+    "shōtō": "shoto",
+    "rokushakubo": "rokushakubo",
+    "rokushakubō": "rokushakubo",
+    "kusari fundo": "kusari fundo",
+    "kyoketsu shoge": "kyoketsu shoge",
+    "shuriken": "shuriken",
+    "jutte": "jutte",
+    "tessen": "tessen",
+}
 
 
 @dataclass(slots=True)
@@ -232,13 +259,94 @@ def _draft_result(
     body: str,
     brief: BriefResult,
     verify_claims: list[str],
+    extra_sources: list[str] | None = None,
 ) -> DraftResult:
+    sources = list(brief.sources_used)
+    for source in extra_sources or []:
+        if source and source not in sources:
+            sources.append(source)
+
     return DraftResult(
         title=request.hook_title,
         body=body.strip(),
-        sources_used=list(brief.sources_used),
+        sources_used=sources,
         verify_claims=list(verify_claims),
     )
+
+
+def _detect_rewrite_focus_term(instruction: str) -> str | None:
+    lowered = (instruction or "").lower()
+    for term, canonical in sorted(DOMAIN_FOCUS_TERMS.items(), key=lambda item: len(item[0]), reverse=True):
+        if re.search(rf"\b{re.escape(term)}\b", lowered):
+            return canonical
+    return None
+
+
+def _focused_rewrite_query(term: str) -> str:
+    return f"{term} curriculum details rank requirements glossary"
+
+
+def _build_focused_rewrite_brief(
+    request: BlogRequest,
+    focus_term: str | None,
+    *,
+    retriever: RetrieverCallable | None,
+    settings: BlogModeSettings,
+) -> tuple[BriefResult | None, dict[str, Any]]:
+    if not focus_term:
+        return None, {"focus_term": None, "retrieval_attempted": False}
+
+    actual_retriever = retriever or _default_retriever
+    query = _focused_rewrite_query(focus_term)
+    try:
+        candidates = list(actual_retriever(query, k=settings.rewrite_focus_top_k_retrieve) or [])
+    except Exception as exc:
+        return None, {
+            "focus_term": focus_term,
+            "retrieval_attempted": True,
+            "query": query,
+            "candidate_count": 0,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    if not candidates:
+        return None, {
+            "focus_term": focus_term,
+            "retrieval_attempted": True,
+            "query": query,
+            "candidate_count": 0,
+            "kept_count": 0,
+        }
+
+    def replay_retriever(_query: str, *, k: int) -> list[dict[str, Any]]:
+        return candidates[:k]
+
+    focused_request = replace(
+        request,
+        hook_title=f"Focused rewrite detail: {focus_term}",
+        premise=None,
+        include_terms=[focus_term],
+        avoid_terms=[],
+        mode=BlogMode.REWRITE,
+    )
+    focused_brief = build_brief_result(
+        focused_request,
+        retriever=replay_retriever,
+        top_k=settings.rewrite_focus_top_k_retrieve,
+        top_k_keep=settings.rewrite_focus_top_k_keep,
+        max_chars=settings.rewrite_focus_budget_chars,
+    )
+    focused_brief.metadata.update(
+        {
+            "focus_term": focus_term,
+            "retrieval_attempted": True,
+            "query": query,
+            "candidate_count": len(candidates),
+            "kept_count": min(len(candidates), settings.rewrite_focus_top_k_keep),
+            "char_count": len(focused_brief.brief_markdown),
+        }
+    )
+    return focused_brief, focused_brief.metadata
 
 
 def _heading_key(line: str) -> str:
@@ -495,12 +603,20 @@ def rewrite_with_instruction(
         anchor_max_chars=cfg.prompt_char_limit(anchor_max_chars or 700),
     )
     command = parse_rewrite_command(instruction, draft=draft)
+    focus_term = _detect_rewrite_focus_term(f"{command.original} {command.instruction}")
+    focused_brief, focused_metadata = _build_focused_rewrite_brief(
+        rewrite_request,
+        focus_term,
+        retriever=retriever,
+        settings=cfg,
+    )
     targeted_draft = f"Edit instruction: {command.instruction}\n\nDraft:\n{draft.strip()}"
     prompt = build_writer_prompt(
         rewrite_request,
         anchors,
         brief,
         draft=targeted_draft,
+        focused_brief=focused_brief,
         max_chars=cfg.prompt_char_limit(prompt_max_chars),
     )
     text, raw = _call_llm(llm, prompt, mode=BlogMode.REWRITE, settings=cfg)
@@ -513,7 +629,13 @@ def rewrite_with_instruction(
     )
 
     return DraftPipelineResult(
-        draft=_draft_result(request, text, brief, verify_claims),
+        draft=_draft_result(
+            request,
+            text,
+            brief,
+            verify_claims,
+            extra_sources=(focused_brief.sources_used if focused_brief else []),
+        ),
         anchors=anchors,
         brief=brief,
         metadata={
@@ -523,6 +645,7 @@ def rewrite_with_instruction(
             "command": command,
             "temperature": cfg.temperature_for(BlogMode.REWRITE),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.REWRITE),
+            "focused_rewrite": focused_metadata,
             "verify_claims": verify_metadata,
         },
     )

@@ -12,6 +12,7 @@ SECTION_LIMITS = {
     "request": 420,
     "anchors": 700,
     "brief": 900,
+    "focused_brief": 1200,
     "outline": 500,
 }
 
@@ -143,6 +144,7 @@ def build_writer_prompt(
     *,
     outline: Optional[str] = None,
     draft: Optional[str] = None,
+    focused_brief: Optional[BriefResult] = None,
     max_chars: int = DEFAULT_PROMPT_MAX_CHARS,
 ) -> str:
     """Build a compact stage-aware writer prompt for blog mode."""
@@ -165,6 +167,12 @@ def build_writer_prompt(
     request_block = "## Request\n" + _clip(_request_block(request), SECTION_LIMITS["request"])
     anchor_block = "## Anchors\n" + _clip(_anchor_block(anchors), SECTION_LIMITS["anchors"])
     brief_block = "## Brief\n" + _clip(_brief_block(brief), SECTION_LIMITS["brief"])
+    focused_brief_block = ""
+    if focused_brief is not None and focused_brief.brief_markdown.strip():
+        focused_brief_block = "## Focused Brief\n" + _clip(
+            focused_brief.brief_markdown,
+            SECTION_LIMITS["focused_brief"],
+        )
 
     outline_block = "## Outline Input\n" + _clip(outline, SECTION_LIMITS["outline"]) if outline else None
     draft_block = "## Draft Input\n" + draft.strip() if _should_include_draft(mode, draft) else None
@@ -176,6 +184,8 @@ def build_writer_prompt(
         primary_blocks.append((outline_block or "", mode in {BlogMode.OUTLINE, BlogMode.DRAFT}))
     if draft_block:
         primary_blocks.append((draft_block, True))
+    if focused_brief_block:
+        primary_blocks.append((focused_brief_block, False))
 
     required_blocks = [intro, stage_task, output_hint]
     if rewrite_constraints:

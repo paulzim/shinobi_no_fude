@@ -22,6 +22,9 @@ class BlogModeSettings:
     rag_top_k_retrieve: int = 18
     rag_top_k_keep: int = 8
     rag_budget_tokens: int = 8000
+    rewrite_focus_top_k_retrieve: int = 6
+    rewrite_focus_top_k_keep: int = 3
+    rewrite_focus_budget_chars: int = 1200
     max_output_tokens: dict[BlogMode, int] = field(
         default_factory=lambda: {
             BlogMode.HOOK_EXPANSION: 900,

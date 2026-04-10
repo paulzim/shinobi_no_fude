@@ -55,6 +55,9 @@ def test_blog_mode_settings_defaults_and_deep_mode():
     assert cfg.rag_top_k_keep == 8
     assert cfg.rag_budget_tokens == 8000
     assert cfg.rag_budget_chars == 32000
+    assert cfg.rewrite_focus_top_k_retrieve == 6
+    assert cfg.rewrite_focus_top_k_keep == 3
+    assert cfg.rewrite_focus_budget_chars == 1200
     assert cfg.max_tokens_for(BlogMode.OUTLINE) == 900
     assert cfg.max_tokens_for(BlogMode.DRAFT) == 2500
     assert cfg.max_tokens_for(BlogMode.POLISH) == 2000
