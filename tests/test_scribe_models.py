@@ -63,7 +63,13 @@ def test_result_objects_create_with_minimal_data():
         anchors=["- Extractor anchor: Weapon: Hanbo", "- [Rank] 8th Kyu"],
         metadata={"anchor_count": 2},
     )
-    brief = BriefResult(title="Hanbo post outline", sections=["Hook", "Basics", "Closing"])
+    brief = BriefResult(
+        title="Hanbo post outline",
+        sections=["Hook", "Basics", "Closing"],
+        brief_markdown="### Blog Brief\n- Hook: Hanbo post outline",
+        sources_used=["nttv rank requirements.txt"],
+        metadata={"kept_count": 3},
+    )
     draft = DraftResult(title="Hanbo post", body="Hanbo training starts at 8th kyu.")
 
     assert anchors.anchor_block.startswith("### Blog Anchors")
@@ -71,5 +77,8 @@ def test_result_objects_create_with_minimal_data():
     assert anchors.metadata["anchor_count"] == 2
     assert brief.title == "Hanbo post outline"
     assert brief.sections == ["Hook", "Basics", "Closing"]
+    assert brief.brief_markdown.startswith("### Blog Brief")
+    assert brief.sources_used == ["nttv rank requirements.txt"]
+    assert brief.metadata["kept_count"] == 3
     assert draft.title == "Hanbo post"
     assert "8th kyu" in draft.body.lower()

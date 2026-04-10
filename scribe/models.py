@@ -80,6 +80,9 @@ class AnchorResult:
 class BriefResult:
     title: str
     sections: list[str] = field(default_factory=list)
+    brief_markdown: str = ""
+    sources_used: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
