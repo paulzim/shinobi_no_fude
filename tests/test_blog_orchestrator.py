@@ -33,13 +33,14 @@ def _katana_passages() -> list[dict]:
         {
             "text": "\n".join(
                 [
-                    "7th Kyu",
-                    "Weapon: Katana",
-                    "Training note: Katana is introduced as a curriculum weapon.",
+                    "[WEAPON] Katana",
+                    "TYPE: sword",
+                    "RANKS: 7th Kyu",
+                    "CORE ACTIONS: drawing, cutting, distance, and control.",
                 ]
             ),
-            "source": "data/katana focus.txt",
-            "meta": {"source": "data/katana focus.txt"},
+            "source": "data/NTTV Weapons Reference.txt",
+            "meta": {"source": "data/NTTV Weapons Reference.txt"},
         }
     ]
 
@@ -139,6 +140,49 @@ class TruncatingRewriteLLM:
         if len(self.calls) == 1:
             return "The rewritten draft starts strongly but", '{"attempt":1}'
         return "The rewritten draft now ends cleanly.", '{"attempt":2}'
+
+
+class KatanaRegressionLLM:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        system: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "system": system,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+        )
+        assert "Stage: rewrite" in prompt
+        assert "Edit instruction: add more detail on katana" in prompt
+        assert "## Focused Brief" in prompt
+        assert "Weapon: Katana" in prompt
+        assert "## Opening" in prompt
+        assert "## What 7th Kyu Is Asking For" in prompt
+        assert "## Keeping The Training Honest" in prompt
+        return (
+            "## Training at 7th Kyu\n\n"
+            "## Opening\n"
+            "This article still stays with the student's experience of 7th kyu: learning how the rank "
+            "asks for cleaner movement, attention, and restraint.\n\n"
+            "## What 7th Kyu Is Asking For\n"
+            "At 7th kyu, the draft can add katana as a specific curriculum detail rather than a new topic. "
+            "The focused brief supports saying that katana is introduced as a weapon at this rank, so the "
+            "addition should stay practical: posture, spacing, and careful handling inside training.\n\n"
+            "## Keeping The Training Honest\n"
+            "The Sanshin no Kata references should remain curriculum anchors, not invented symbolism. "
+            "Keep them as named training elements and avoid replacing them with generic martial arts claims.",
+            '{"stage":"rewrite","regression":"katana"}',
+        )
 
 
 def test_rewrite_truncation_detector_samples():
@@ -300,10 +344,53 @@ def test_rewrite_instruction_with_focus_term_adds_small_focused_brief():
     assert "FINAL_DRAFT_MARKER" in prompt
     assert "## Focused Brief" in prompt
     assert "Focused rewrite detail: katana" in prompt
-    assert "katana focus.txt" in prompt
-    assert "katana focus.txt" in result.draft.sources_used
+    assert "NTTV Weapons Reference.txt" in prompt
+    assert "NTTV Weapons Reference.txt" in result.draft.sources_used
     assert result.metadata["focused_rewrite"]["focus_term"] == "katana"
     assert result.metadata["focused_rewrite"]["char_count"] <= BlogModeSettings().rewrite_focus_budget_chars
+
+
+def test_rewrite_katana_regression_preserves_7th_kyu_article_structure():
+    retriever = RecordingRetriever(focused=_katana_passages())
+    llm = KatanaRegressionLLM()
+    req = BlogRequest(
+        hook_title="Training at 7th Kyu",
+        premise="A reflective article about what 7th kyu training asks from the student.",
+    )
+    draft = (
+        "## Training at 7th Kyu\n\n"
+        "## Opening\n"
+        "The article is about 7th kyu as a stage of training, not a glossary entry.\n\n"
+        "## What 7th Kyu Is Asking For\n"
+        "The rank asks the student to connect basics without rushing past the curriculum. "
+        "It mentions Sanshin no Kata as a training anchor, including Chi no Kata and Sui no Kata, "
+        "without trying to turn those names into invented symbolic lessons.\n\n"
+        "## Keeping The Training Honest\n"
+        "The close reminds the reader to preserve source-grounded details and avoid generic filler."
+    )
+
+    result = rewrite_with_instruction(
+        req,
+        draft,
+        "add more detail on katana",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    body = result.draft.body
+    assert body.startswith("## Training at 7th Kyu")
+    assert "## Opening" in body
+    assert body.index("## Opening") < body.index("## What 7th Kyu Is Asking For")
+    assert body.index("## What 7th Kyu Is Asking For") < body.index("## Keeping The Training Honest")
+    assert "katana is introduced as a weapon at this rank" in body
+    assert "what is 7th kyu" not in body.lower()
+    assert "7th kyu is the seventh student rank" not in body.lower()
+    assert "earth element" not in body.lower()
+    assert "water element" not in body.lower()
+    assert "fire element" not in body.lower()
+    assert is_likely_truncated_output(body) is False
+    assert result.metadata["focused_rewrite"]["focus_term"] == "katana"
+    assert result.metadata["truncation"]["detected"] is False
 
 
 def test_rewrite_instruction_without_focus_term_skips_focused_retrieval():
