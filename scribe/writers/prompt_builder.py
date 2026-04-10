@@ -7,13 +7,12 @@ from typing import Optional
 from scribe.models import AnchorResult, BlogMode, BlogRequest, BriefResult
 
 
-DEFAULT_PROMPT_MAX_CHARS = 2600
+DEFAULT_PROMPT_MAX_CHARS = 32000
 SECTION_LIMITS = {
     "request": 420,
     "anchors": 700,
     "brief": 900,
     "outline": 500,
-    "draft": 700,
 }
 
 STAGE_TASKS = {
@@ -88,6 +87,12 @@ def _brief_block(brief: BriefResult) -> str:
     return "### Blog Brief\n- No brief was available."
 
 
+def _should_include_draft(mode: BlogMode, draft: Optional[str]) -> bool:
+    if not draft:
+        return False
+    return mode != BlogMode.HOOK_EXPANSION
+
+
 def _add_block(
     parts: list[str],
     block: str,
@@ -148,16 +153,18 @@ def build_writer_prompt(
     anchor_block = "## Anchors\n" + _clip(_anchor_block(anchors), SECTION_LIMITS["anchors"])
     brief_block = "## Brief\n" + _clip(_brief_block(brief), SECTION_LIMITS["brief"])
 
-    optional_blocks: list[tuple[str, bool]] = []
-    if outline:
-        optional_blocks.append(("## Outline Input\n" + _clip(outline, SECTION_LIMITS["outline"]), False))
-    if draft:
-        if mode == BlogMode.REWRITE:
-            optional_blocks.append(("## Draft Input\n" + draft.strip(), True))
-        else:
-            optional_blocks.append(("## Draft Input\n" + _clip(draft, SECTION_LIMITS["draft"]), False))
+    outline_block = "## Outline Input\n" + _clip(outline, SECTION_LIMITS["outline"]) if outline else None
+    draft_block = "## Draft Input\n" + draft.strip() if _should_include_draft(mode, draft) else None
 
-    required_blocks = [intro, stage_task, output_hint, request_block, anchor_block, brief_block]
+    primary_blocks: list[tuple[str, bool]] = []
+    auxiliary_blocks: list[tuple[str, bool]] = [(anchor_block, True), (brief_block, True)]
+
+    if outline:
+        primary_blocks.append((outline_block or "", mode in {BlogMode.OUTLINE, BlogMode.DRAFT}))
+    if draft_block:
+        primary_blocks.append((draft_block, True))
+
+    required_blocks = [intro, stage_task, output_hint, request_block]
     parts: list[str] = []
     remaining = max_chars
     for idx, block in enumerate(required_blocks):
@@ -170,7 +177,10 @@ def build_writer_prompt(
             reserve_for_rest=reserve_for_rest,
         )
 
-    for block, required in optional_blocks:
+    for block, required in primary_blocks:
+        remaining = _add_block(parts, block, remaining=remaining, required=required)
+
+    for block, required in auxiliary_blocks:
         remaining = _add_block(parts, block, remaining=remaining, required=required)
 
     prompt = "".join(parts).strip()

@@ -202,3 +202,30 @@ def test_rewrite_prompt_receives_full_normal_length_draft():
     assert "Paragraph 119" in prompt
     assert "FINAL_KATANA_DETAIL_MARKER" in prompt
     assert len(prompt) <= BlogModeSettings().active_context_limit
+
+
+def test_polish_prompt_receives_full_normal_length_draft():
+    retriever = Mock(return_value=_passages())
+    llm = FakeLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+    paragraphs = [
+        (
+            f"Paragraph {idx}: The current draft should stay visible for polish, "
+            "not just the opening slice."
+        )
+        for idx in range(1, 120)
+    ]
+    long_draft = "\n\n".join(paragraphs) + "\n\nFINAL_POLISH_MARKER"
+
+    polish_draft(
+        req,
+        long_draft,
+        retriever=retriever,
+        llm=llm,
+    )
+
+    prompt = llm.prompts[0]
+    assert "Stage: polish" in prompt
+    assert "Paragraph 119" in prompt
+    assert "FINAL_POLISH_MARKER" in prompt
+    assert len(prompt) <= BlogModeSettings().active_context_limit

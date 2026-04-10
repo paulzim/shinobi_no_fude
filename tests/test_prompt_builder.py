@@ -101,7 +101,39 @@ def test_build_writer_prompt_enforces_caps_and_keeps_structure():
     assert len(prompt) <= 1100
     assert "## Stage Task" in prompt
     assert "## Output" in prompt
-    assert "## Anchors" in prompt
-    assert "## Brief" in prompt
+    assert "## Draft Input" in prompt
     assert huge_anchor not in prompt
     assert huge_brief not in prompt
+
+
+def test_draft_mode_includes_full_prior_draft_when_explicit_redraft():
+    prior_draft = "\n\n".join(
+        f"Paragraph {idx}: redraft context should remain available."
+        for idx in range(1, 120)
+    )
+    prior_draft += "\n\nFINAL_REDRAFT_MARKER"
+
+    prompt = build_writer_prompt(
+        _sample_request("draft"),
+        _sample_anchors(),
+        _sample_brief(),
+        outline="## Outline\n- Keep the structure.",
+        draft=prior_draft,
+        max_chars=32000,
+    )
+
+    assert "## Draft Input" in prompt
+    assert "Paragraph 119" in prompt
+    assert "FINAL_REDRAFT_MARKER" in prompt
+
+
+def test_hook_expansion_ignores_draft_input():
+    prompt = build_writer_prompt(
+        _sample_request("hook_expansion"),
+        _sample_anchors(),
+        _sample_brief(),
+        draft="This draft should not be included in hook expansion.",
+    )
+
+    assert "## Draft Input" not in prompt
+    assert "This draft should not be included" not in prompt
