@@ -48,7 +48,12 @@ def _default_llm(
 ) -> tuple[str, str]:
     from app import call_llm
 
-    return call_llm(prompt, system=system)
+    return call_llm(
+        prompt,
+        system=system,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
 
 
 def _stage_request(request: BlogRequest, mode: BlogMode) -> BlogRequest:

@@ -872,7 +872,10 @@ def inject_specific_technique_line_if_needed(question: str, passages: list[dict]
 # --------------------------------------------------------------------
 def call_llm(
     prompt: str,
-    system: str = "You are a precise assistant. Use only the provided context."
+    system: str = "You are a precise assistant. Use only the provided context.",
+    *,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
 ) -> Tuple[str, str]:
     import requests
     base = _resolved_llm_base()
@@ -890,8 +893,8 @@ def call_llm(
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
-        "max_tokens": 600,
+        "temperature": 0.2 if temperature is None else temperature,
+        "max_tokens": 600 if max_tokens is None else max_tokens,
     }
 
     try:

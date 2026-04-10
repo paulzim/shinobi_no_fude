@@ -2,7 +2,12 @@ from unittest.mock import Mock
 
 from scribe.config import BlogModeSettings, DEFAULT_BLOG_MODE_SETTINGS
 from scribe.models import BlogMode, BlogRequest
-from scribe.pipeline.orchestrator import build_around_hook, draft_from_outline, polish_draft
+from scribe.pipeline.orchestrator import (
+    build_around_hook,
+    draft_from_outline,
+    polish_draft,
+    rewrite_with_instruction,
+)
 
 
 def _passage(idx: int, text: str = "Weapon: Hanbo") -> dict:
@@ -95,3 +100,10 @@ def test_orchestrator_passes_stage_temperature_and_output_tokens():
 
     assert llm.calls[0]["temperature"] == 0.4
     assert 1800 <= llm.calls[0]["max_tokens"] <= 2200
+
+    llm.calls.clear()
+    rewrite_with_instruction(req, "Draft text", "More direct", retriever=retriever, llm=llm)
+
+    assert llm.calls[0]["temperature"] == 0.4
+    assert llm.calls[0]["max_tokens"] > 600
+    assert llm.calls[0]["max_tokens"] == 2000
