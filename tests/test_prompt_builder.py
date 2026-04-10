@@ -165,3 +165,54 @@ def test_rewrite_constraints_do_not_appear_in_draft_prompt():
 
     assert "## Rewrite Constraints" not in prompt
     assert "Prefer insertion/expansion over full regeneration." not in prompt
+
+
+def test_rank_curriculum_draft_prompt_includes_grounding_constraints():
+    prompt = build_writer_prompt(
+        _sample_request("draft"),
+        AnchorResult(
+            anchor_block="### Blog Anchors\n- Rank scope: 6th kyu only",
+            metadata={"rank_overview": True, "rank": "6th kyu"},
+        ),
+        BriefResult(
+            title="6th Kyu overview",
+            brief_markdown=(
+                "### Blog Brief\n"
+                "### Exact Rank Requirements\n"
+                "- Rank: 6th Kyu\n"
+                "- Weapon: Rokushakubo"
+            ),
+            sources_used=["nttv rank requirements.txt"],
+            metadata={"rank_brief": True, "rank": "6th kyu"},
+        ),
+        outline="## Outline\n- Stay rank-specific.",
+    )
+
+    assert "## Rank/Curriculum Draft Constraints" in prompt
+    assert (
+        "Do not invent techniques, training equipment, benefits, or requirements not present in the fact sheet or brief."
+        in prompt
+    )
+    assert "Do not generalize with generic martial arts filler when exact source facts are sparse." in prompt
+    assert "If exact source material is limited, stay concise rather than expanding with invented content." in prompt
+    assert (
+        "Do not add conditioning, sparring, meditation, emotional control, or gear sections unless grounded in provided sources."
+        in prompt
+    )
+    assert "Preserve rank specificity." in prompt
+
+
+def test_non_rank_draft_prompt_omits_rank_curriculum_constraints():
+    prompt = build_writer_prompt(
+        BlogRequest(hook_title="A personal writing reflection", mode="draft"),
+        AnchorResult(anchor_block="### Blog Anchors\n- Theme: voice"),
+        BriefResult(
+            title="A personal writing reflection",
+            brief_markdown="### Blog Brief\n- Note: write about attention and revision.",
+            sources_used=["notes.txt"],
+        ),
+        outline="## Outline\n- Opening\n- Close",
+    )
+
+    assert "## Rank/Curriculum Draft Constraints" not in prompt
+    assert "Preserve rank specificity." not in prompt

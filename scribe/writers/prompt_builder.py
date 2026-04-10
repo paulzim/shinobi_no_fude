@@ -50,6 +50,14 @@ REWRITE_CONSTRAINTS = [
     "Prefer insertion/expansion over full regeneration.",
 ]
 
+RANK_CURRICULUM_DRAFT_CONSTRAINTS = [
+    "Do not invent techniques, training equipment, benefits, or requirements not present in the fact sheet or brief.",
+    "Do not generalize with generic martial arts filler when exact source facts are sparse.",
+    "If exact source material is limited, stay concise rather than expanding with invented content.",
+    "Do not add conditioning, sparring, meditation, emotional control, or gear sections unless grounded in provided sources.",
+    "Preserve rank specificity.",
+]
+
 
 def _clean(text: str) -> str:
     return " ".join((text or "").strip().split())
@@ -94,6 +102,33 @@ def _brief_block(brief: BriefResult) -> str:
     if brief.sections:
         return "### Blog Brief\n" + "\n".join(brief.sections)
     return "### Blog Brief\n- No brief was available."
+
+
+def _looks_like_rank_curriculum(
+    request: BlogRequest,
+    anchors: AnchorResult,
+    brief: BriefResult,
+) -> bool:
+    if any(
+        metadata.get("rank_overview") or metadata.get("rank_brief") or metadata.get("rank_scoped")
+        for metadata in [anchors.metadata, brief.metadata]
+    ):
+        return True
+
+    source_text = " ".join(brief.sources_used).lower()
+    if "rank requirements" in source_text:
+        return True
+
+    text = " ".join(
+        [
+            request.hook_title,
+            request.premise or "",
+            " ".join(request.include_terms),
+            anchors.anchor_block,
+            brief.brief_markdown,
+        ]
+    ).lower()
+    return any(term in text for term in [" kyu", " shodan", "rank requirements", "curriculum"])
 
 
 def _should_include_draft(mode: BlogMode, draft: Optional[str]) -> bool:
@@ -164,6 +199,11 @@ def build_writer_prompt(
         rewrite_constraints = "## Rewrite Constraints\n" + "\n".join(
             f"- {constraint}" for constraint in REWRITE_CONSTRAINTS
         )
+    rank_curriculum_constraints = ""
+    if mode == BlogMode.DRAFT and _looks_like_rank_curriculum(request, anchors, brief):
+        rank_curriculum_constraints = "## Rank/Curriculum Draft Constraints\n" + "\n".join(
+            f"- {constraint}" for constraint in RANK_CURRICULUM_DRAFT_CONSTRAINTS
+        )
     request_block = "## Request\n" + _clip(_request_block(request), SECTION_LIMITS["request"])
     anchor_block = "## Anchors\n" + _clip(_anchor_block(anchors), SECTION_LIMITS["anchors"])
     brief_block = "## Brief\n" + _clip(_brief_block(brief), SECTION_LIMITS["brief"])
@@ -190,6 +230,8 @@ def build_writer_prompt(
     required_blocks = [intro, stage_task, output_hint]
     if rewrite_constraints:
         required_blocks.append(rewrite_constraints)
+    if rank_curriculum_constraints:
+        required_blocks.append(rank_curriculum_constraints)
     required_blocks.append(request_block)
     parts: list[str] = []
     remaining = max_chars
