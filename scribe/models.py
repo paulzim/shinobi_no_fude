@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable
+from typing import Any, Iterable
 
 
 class CreativityLevel(str, Enum):
@@ -71,7 +71,9 @@ class BlogRequest:
 
 @dataclass(slots=True)
 class AnchorResult:
+    anchor_block: str = ""
     anchors: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -84,4 +86,3 @@ class BriefResult:
 class DraftResult:
     title: str
     body: str
-

@@ -58,11 +58,17 @@ def test_blog_request_rejects_invalid_required_fields():
 
 
 def test_result_objects_create_with_minimal_data():
-    anchors = AnchorResult(anchors=["Weapon: Hanbo", "8th Kyu"])
+    anchors = AnchorResult(
+        anchor_block="### Blog Anchors\n- Extractor anchor: Weapon: Hanbo",
+        anchors=["- Extractor anchor: Weapon: Hanbo", "- [Rank] 8th Kyu"],
+        metadata={"anchor_count": 2},
+    )
     brief = BriefResult(title="Hanbo post outline", sections=["Hook", "Basics", "Closing"])
     draft = DraftResult(title="Hanbo post", body="Hanbo training starts at 8th kyu.")
 
-    assert anchors.anchors == ["Weapon: Hanbo", "8th Kyu"]
+    assert anchors.anchor_block.startswith("### Blog Anchors")
+    assert anchors.anchors == ["- Extractor anchor: Weapon: Hanbo", "- [Rank] 8th Kyu"]
+    assert anchors.metadata["anchor_count"] == 2
     assert brief.title == "Hanbo post outline"
     assert brief.sections == ["Hook", "Basics", "Closing"]
     assert draft.title == "Hanbo post"
