@@ -7,7 +7,11 @@ from typing import Any
 
 from extractors import try_extract_answer
 from scribe.models import AnchorResult, BlogRequest, BriefResult
-from scribe.pipeline.rank_overview import detect_rank_scoped_request, rank_scoped_passages
+from scribe.pipeline.rank_overview import (
+    build_rank_overview_context,
+    detect_rank_scoped_request,
+    rank_scoped_passages,
+)
 from scribe.text_seam import build_extraction_context, get_passage_extractions
 
 
@@ -184,6 +188,28 @@ def build_brief_result(
     retriever = retriever or _default_retriever
     query = _build_retrieval_query(request)
     candidates = list(retriever(query, k=top_k) or [])
+    rank_scope = detect_rank_scoped_request(query)
+    if rank_scope:
+        rank_context = build_rank_overview_context(
+            request,
+            candidates,
+            rank_key=rank_scope,
+            max_chars=max_chars,
+        )
+        if rank_context is not None:
+            brief, _anchors = rank_context
+            brief.metadata.update(
+                {
+                    "query": query,
+                    "top_k_requested": top_k,
+                    "top_k_keep": top_k_keep,
+                    "candidate_count": len(candidates),
+                    "kept_count": 1,
+                    "char_count": len(brief.brief_markdown),
+                }
+            )
+            return brief
+
     kept = candidates[:top_k_keep]
     anchor_result = build_anchor_result(
         request,

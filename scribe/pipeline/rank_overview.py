@@ -48,6 +48,30 @@ _FIELD_RE = re.compile(
     rf"^(?P<label>{'|'.join(re.escape(label) for label in RANK_OVERVIEW_FIELDS)}):\s*(?P<value>.*)$",
     re.IGNORECASE,
 )
+_GLOSSARY_LINE_RE = re.compile(
+    r"^(?P<term>[^:-][^:-]{1,90}?)\s*(?:-|:)\s*(?P<definition>.+)$"
+)
+_CONTINUATION_FIELDS = {
+    "Weapon Kamae",
+    "Weapon Strikes",
+    "Cuts",
+    "Draws",
+    "Evasions",
+    "Weapon Spinning",
+    "Kamae",
+    "Ukemi",
+    "Kaiten",
+    "Taihenjutsu",
+    "Blocking",
+    "Striking",
+    "Grappling and escapes",
+    "Kihon Happo",
+    "San Shin no Kata",
+    "Nage waza",
+    "Jime waza",
+    "Kyusho",
+    "Other",
+}
 
 
 def detect_rank_overview_request(text: str) -> str | None:
@@ -155,15 +179,11 @@ def rank_scoped_passages(
     rank_key: str,
 ) -> list[dict[str, Any]]:
     """Return a synthetic passage containing only the requested rank block."""
-    rank_text = _find_rank_text_from_passages(passages)
-    if not rank_text:
+    rank_match = _rank_block_from_passages(passages, rank_key)
+    if not rank_match:
         return []
 
-    block = _extract_rank_block(rank_text, rank_key)
-    if not block:
-        return []
-
-    source_name = _rank_source_name(passages)
+    block, source_name = rank_match
     return [
         {
             "text": block,
@@ -199,6 +219,33 @@ def _rank_source_name(passages: list[dict[str, Any]]) -> str:
     return "nttv rank requirements.txt"
 
 
+def _rank_block_from_passages(
+    passages: list[dict[str, Any]],
+    rank_key: str,
+) -> tuple[str, str] | None:
+    for passage in passages:
+        text = passage.get("text") or ""
+        if not text:
+            continue
+
+        block = _extract_rank_block(text, rank_key)
+        if not block:
+            continue
+
+        source = passage.get("source") or (passage.get("meta") or {}).get("source") or ""
+        if "nttv rank requirements" in source.lower():
+            return block, os.path.basename(source) or "nttv rank requirements.txt"
+
+    rank_text = _find_rank_text_from_passages(passages)
+    if not rank_text:
+        return None
+
+    block = _extract_rank_block(rank_text, rank_key)
+    if not block:
+        return None
+    return block, _rank_source_name(passages)
+
+
 def _field_map(block: str) -> dict[str, str]:
     canonical = {label.lower(): label for label in RANK_OVERVIEW_FIELDS}
     fields: dict[str, list[str]] = {label: [] for label in RANK_OVERVIEW_FIELDS}
@@ -219,7 +266,7 @@ def _field_map(block: str) -> dict[str, str]:
                 fields[label].append(value)
             continue
 
-        if current:
+        if current in _CONTINUATION_FIELDS:
             fields[current].append(_norm(line))
 
     return {
@@ -227,6 +274,85 @@ def _field_map(block: str) -> dict[str, str]:
         for label, values in fields.items()
         if _norm(" ".join(values))
     }
+
+
+def _clip_text(text: str, max_chars: int) -> str:
+    text = _norm(text)
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _line_fits(lines: list[str], line: str, max_chars: int) -> bool:
+    projected = len("\n".join([*lines, line]))
+    return projected <= max_chars
+
+
+def _add_bounded_line(lines: list[str], line: str, max_chars: int) -> None:
+    line = _norm(line) if not line.startswith("###") else line.strip()
+    if not line:
+        return
+    if _line_fits(lines, line, max_chars):
+        lines.append(line)
+
+
+def _term_in_rank_block(term: str, rank_block: str) -> bool:
+    term = _norm(term).lower()
+    block = _norm(rank_block).lower()
+    if not term:
+        return False
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", block) is not None
+
+
+def _glossary_source_name(passage: dict[str, Any]) -> str:
+    source = passage.get("source") or (passage.get("meta") or {}).get("source") or ""
+    return os.path.basename(source) or "Glossary"
+
+
+def _supporting_glossary_definitions(
+    passages: list[dict[str, Any]],
+    rank_block: str,
+    *,
+    max_items: int = 6,
+) -> tuple[list[str], list[str]]:
+    definitions: list[str] = []
+    sources: list[str] = []
+    seen: set[str] = set()
+
+    for passage in passages:
+        source = passage.get("source") or (passage.get("meta") or {}).get("source") or ""
+        if "glossary" not in source.lower():
+            continue
+
+        source_name = _glossary_source_name(passage)
+        for raw in (passage.get("text") or "").splitlines():
+            line = _norm(raw).replace("\u2013", "-").replace("\u2014", "-")
+            if not line or line.lower() == "glossary":
+                continue
+
+            match = _GLOSSARY_LINE_RE.match(line)
+            if not match:
+                continue
+
+            term = _norm(match.group("term"))
+            definition = _norm(match.group("definition"))
+            if not term or not definition or not _term_in_rank_block(term, rank_block):
+                continue
+
+            key = term.lower()
+            if key in seen:
+                continue
+
+            definitions.append(f"- {term}: {_clip_text(definition, 150)}")
+            seen.add(key)
+            if source_name not in sources:
+                sources.append(source_name)
+            if len(definitions) >= max_items:
+                return definitions, sources
+
+    return definitions, sources
 
 
 def build_rank_overview_context(
@@ -237,27 +363,27 @@ def build_rank_overview_context(
     max_chars: int = 5000,
 ) -> tuple[BriefResult, AnchorResult] | None:
     """Build a single-rank fact sheet from nttv rank requirements passages."""
-    rank_text = _find_rank_text_from_passages(passages)
-    if not rank_text:
+    rank_match = _rank_block_from_passages(passages, rank_key)
+    if not rank_match:
         return None
 
-    block = _extract_rank_block(rank_text, rank_key)
-    if not block:
-        return None
-
+    block, source_name = rank_match
     fields = _field_map(block)
     if not fields:
         return None
 
-    source_name = _rank_source_name(passages)
     title_rank = _title_rank(rank_key)
+    glossary_definitions, glossary_sources = _supporting_glossary_definitions(passages, block)
     det_answer = try_answer_rank_requirements(
         f"What are the rank requirements for {rank_key}?",
         [{"text": block, "source": source_name, "meta": {"source": source_name}}],
     )
 
     lines = [
+        "### Blog Brief",
         "### Rank Overview Fact Sheet",
+        "### Exact Rank Requirements",
+        f"- Hook: {request.hook_title}",
         f"- Rank: {title_rank}",
         f"- Source: {source_name}",
         "- Scope: this fact sheet is limited to this rank block only.",
@@ -265,18 +391,33 @@ def build_rank_overview_context(
     for label in RANK_OVERVIEW_FIELDS:
         value = fields.get(label)
         if value:
-            lines.append(f"- {label}: {value}")
+            lines.append(f"- {label}: {_clip_text(value, 320)}")
 
-    fact_sheet = "\n".join(lines)
-    if len(fact_sheet) > max_chars:
-        fact_sheet = fact_sheet[: max_chars - 3].rstrip() + "..."
+    lines.append("### Optional Supporting Definitions")
+    if glossary_definitions:
+        lines.extend(glossary_definitions)
+    else:
+        lines.append("- None from retrieved glossary passages.")
+
+    sources_used = [source_name, *glossary_sources]
+    lines.append("### Sources Used")
+    for source in sources_used:
+        lines.append(f"- {source}")
+
+    bounded_lines: list[str] = []
+    for line in lines:
+        _add_bounded_line(bounded_lines, line, max_chars)
+
+    fact_sheet = "\n".join(bounded_lines)
 
     anchors = [line for line in fact_sheet.splitlines()[1:] if line.startswith("- ")]
     metadata = {
         "rank_overview": True,
+        "rank_brief": True,
         "rank": rank_key,
         "source": source_name,
         "field_count": len(fields),
+        "glossary_definition_count": len(glossary_definitions),
         "deterministic_answer": det_answer,
         "char_count": len(fact_sheet),
     }
@@ -286,7 +427,7 @@ def build_rank_overview_context(
             title=f"{title_rank} overview",
             sections=anchors,
             brief_markdown=fact_sheet,
-            sources_used=[source_name],
+            sources_used=sources_used,
             metadata=metadata,
         ),
         AnchorResult(
