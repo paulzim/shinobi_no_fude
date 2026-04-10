@@ -159,3 +159,90 @@ def test_rank_specific_brief_ignores_glossary_terms_absent_from_6th_kyu_block():
     assert "hanbo" not in low
     assert "none from retrieved glossary passages" in low
     assert result.sources_used == ["nttv rank requirements.txt"]
+
+
+def test_6th_kyu_overview_brief_excludes_neighboring_ranks_and_unsupported_advice():
+    retriever = Mock(
+        return_value=[
+            {
+                "text": "\n".join(
+                    [
+                        "7th Kyu",
+                        "Weapon: Katana",
+                        "Other: Parts of the Katana",
+                        "8th Kyu",
+                        "Weapon: Hanbo",
+                        "9th Kyu",
+                        "Other: etiquette; bow-in; dojo terms",
+                    ]
+                ),
+                "source": "data/noisy neighboring rank excerpt.txt",
+                "meta": {"source": "data/noisy neighboring rank excerpt.txt"},
+            },
+            {
+                "text": (
+                    "Generic martial arts advice: add conditioning, sparring, meditation, "
+                    "emotional control, black gi selection, bokken drills, tanto practice, "
+                    "and general gear guidance."
+                ),
+                "source": "data/generic martial arts advice.txt",
+                "meta": {"source": "data/generic martial arts advice.txt"},
+            },
+            {
+                "text": RANK_FILE.read_text(encoding="utf-8"),
+                "source": "data/nttv rank requirements.txt",
+                "meta": {"source": "data/nttv rank requirements.txt"},
+            },
+            {
+                "text": "\n".join(
+                    [
+                        "Glossary",
+                        "Rokushakubo - Six-foot staff",
+                        "Katana - Long sword",
+                        "Hanbo - Three-foot staff",
+                        "Black Gi - black training uniform",
+                        "Bokken - wooden sword",
+                        "Tanto - knife",
+                        "Meditation - quiet sitting practice",
+                    ]
+                ),
+                "source": "data/Glossary - edit.txt",
+                "meta": {"source": "data/Glossary - edit.txt"},
+            },
+        ]
+    )
+    req = BlogRequest(
+        hook_title="What are the skills for 6th kyu?",
+        premise="Give an overview of 6th kyu for a beginning student.",
+        mode="outline",
+    )
+
+    result = build_brief_result(req, retriever=retriever, max_chars=2600)
+    brief = result.brief_markdown
+    low = brief.lower()
+
+    assert "### Exact Rank Requirements" in brief
+    assert "### Optional Supporting Definitions" in brief
+    assert "- Rank: 6th Kyu" in brief
+    assert "- Weapon: Rokushakubo" in brief
+    assert "Rokushakubo: Six-foot staff" in brief
+    assert result.sources_used == ["nttv rank requirements.txt", "Glossary - edit.txt"]
+    assert result.metadata["rank_brief"] is True
+    assert result.metadata["rank"] == "6th kyu"
+
+    for forbidden in [
+        "7th kyu",
+        "8th kyu",
+        "9th kyu",
+        "katana",
+        "hanbo",
+        "black gi",
+        "bokken",
+        "tanto",
+        "conditioning",
+        "sparring",
+        "meditation",
+        "emotional control",
+        "gear guidance",
+    ]:
+        assert forbidden not in low
