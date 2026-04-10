@@ -1,10 +1,12 @@
 {
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "embed_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "faiss_path": "index.faiss",
+  "faiss_path": "C:\\Users\\paulz\\GitHub\\shinobi_no_fude\\index\\index.faiss",
   "top_k": 6,
   "chunk_size": 700,
   "chunk_overlap": 120,
+  "chunk_extractions": true,
+  "chunk_extraction_version": 1,
   "files": [
     "data\\Bujinkan Leadership and Wisdom.txt",
     "data\\Glossary - edit.txt",
