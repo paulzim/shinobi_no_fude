@@ -7,6 +7,7 @@ from typing import Any
 
 from extractors import try_extract_answer
 from scribe.models import AnchorResult, BlogRequest, BriefResult
+from scribe.pipeline.rank_overview import detect_rank_scoped_request, rank_scoped_passages
 from scribe.text_seam import build_extraction_context, get_passage_extractions
 
 
@@ -94,6 +95,11 @@ def build_anchor_result(
     seen: set[str] = set()
     total = 0
     extractor_queries = _candidate_queries(request)
+    rank_scope = detect_rank_scoped_request(" | ".join(extractor_queries))
+    scoped_passages = (
+        rank_scoped_passages(passages, rank_key=rank_scope) if rank_scope else []
+    )
+    anchor_passages = scoped_passages or passages
     used_extractor = False
 
     def add_line(line: str) -> None:
@@ -117,16 +123,18 @@ def build_anchor_result(
     add_line(f"- Hook: {_clip(request.hook_title, 120)}")
     if request.premise:
         add_line(f"- Premise: {_clip(request.premise, 140)}")
+    if scoped_passages and rank_scope:
+        add_line(f"- Rank scope: {rank_scope} only")
 
     for query in extractor_queries:
-        answer = try_extract_answer(query, passages)
+        answer = try_extract_answer(query, anchor_passages)
         if not answer:
             continue
         used_extractor = True
         add_line(f"- Extractor anchor: {_clip(answer, 220)}")
 
     passage_anchor_block = build_extraction_context(
-        passages,
+        anchor_passages,
         max_chars=max_chars,
         max_items=max_items,
     )
@@ -146,10 +154,13 @@ def build_anchor_result(
         metadata={
             "mode": request.mode.value,
             "passage_count": len(passages),
+            "anchor_passage_count": len(anchor_passages),
             "queries": extractor_queries,
             "anchor_count": len(lines),
             "char_count": len(block),
             "used_extractor": used_extractor,
+            "rank_scope": rank_scope,
+            "rank_scoped": bool(scoped_passages),
         },
     )
 

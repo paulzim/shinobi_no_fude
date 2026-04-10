@@ -39,6 +39,11 @@ RANK_OVERVIEW_FIELDS = [
     "Other",
 ]
 
+_RANK_MENTION_RE = re.compile(
+    r"\b(?P<num>\d+)\s*(?:st|nd|rd|th)?\s+kyu\b|\b(?P<dan>shodan)\b",
+    re.IGNORECASE,
+)
+
 _FIELD_RE = re.compile(
     rf"^(?P<label>{'|'.join(re.escape(label) for label in RANK_OVERVIEW_FIELDS)}):\s*(?P<value>.*)$",
     re.IGNORECASE,
@@ -87,6 +92,89 @@ def detect_rank_overview_request(text: str) -> str | None:
     if "overview" in low:
         return rank_key
     return None
+
+
+def _ordinal_kyu_rank(value: str) -> str:
+    if value == "1":
+        return "1st kyu"
+    if value == "2":
+        return "2nd kyu"
+    if value == "3":
+        return "3rd kyu"
+    return f"{value}th kyu"
+
+
+def _rank_mentions(text: str) -> list[str]:
+    ranks: list[str] = []
+    seen: set[str] = set()
+    for match in _RANK_MENTION_RE.finditer(text or ""):
+        rank = "shodan" if match.group("dan") else _ordinal_kyu_rank(match.group("num"))
+        if rank not in seen:
+            ranks.append(rank)
+            seen.add(rank)
+    return ranks
+
+
+def _asks_for_rank_comparison(text: str) -> bool:
+    low = _norm(text).lower()
+    return any(
+        phrase in low
+        for phrase in [
+            "compare",
+            "comparison",
+            "versus",
+            " vs ",
+            "difference between",
+            "differences between",
+            "between",
+            "all ranks",
+            "across ranks",
+            "neighboring ranks",
+            "previous ranks",
+            "next ranks",
+            "up to",
+            "up through",
+            "by the time",
+        ]
+    ) or re.search(r"\bby\s+\d+(?:st|nd|rd|th)?\s+kyu\b", low) is not None
+
+
+def detect_rank_scoped_request(text: str) -> str | None:
+    """Return a rank key when anchors should be limited to one named rank."""
+    ranks = _rank_mentions(text)
+    if len(ranks) != 1:
+        return None
+    if _asks_for_rank_comparison(text):
+        return None
+    return ranks[0]
+
+
+def rank_scoped_passages(
+    passages: list[dict[str, Any]],
+    *,
+    rank_key: str,
+) -> list[dict[str, Any]]:
+    """Return a synthetic passage containing only the requested rank block."""
+    rank_text = _find_rank_text_from_passages(passages)
+    if not rank_text:
+        return []
+
+    block = _extract_rank_block(rank_text, rank_key)
+    if not block:
+        return []
+
+    source_name = _rank_source_name(passages)
+    return [
+        {
+            "text": block,
+            "source": source_name,
+            "meta": {
+                "source": source_name,
+                "rank": rank_key,
+                "rank_scoped": True,
+            },
+        }
+    ]
 
 
 def rank_overview_retrieval_query(request: BlogRequest, rank_key: str) -> str:

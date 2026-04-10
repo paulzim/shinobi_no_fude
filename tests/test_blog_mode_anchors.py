@@ -1,5 +1,9 @@
+import pathlib
+
 from scribe.models import AnchorResult, BlogRequest
 from scribe.pipeline.blog_mode import build_anchor_result
+
+RANK_FILE = pathlib.Path("data") / "nttv rank requirements.txt"
 
 
 def _rank_passages() -> list[dict]:
@@ -13,6 +17,16 @@ def _rank_passages() -> list[dict]:
                     "San Shin no Kata: Chi no Kata; Sui no Kata",
                 ]
             ),
+            "source": "data/nttv rank requirements.txt",
+            "meta": {"source": "data/nttv rank requirements.txt"},
+        }
+    ]
+
+
+def _full_rank_passages() -> list[dict]:
+    return [
+        {
+            "text": RANK_FILE.read_text(encoding="utf-8"),
             "source": "data/nttv rank requirements.txt",
             "meta": {"source": "data/nttv rank requirements.txt"},
         }
@@ -51,3 +65,38 @@ def test_build_anchor_result_is_deterministic_for_same_inputs():
     assert first.anchor_block == second.anchor_block
     assert first.anchors == second.anchors
     assert first.metadata == second.metadata
+
+
+def test_rank_specific_anchor_result_scopes_to_6th_kyu_only():
+    req = BlogRequest(
+        hook_title="What are the skills for 6th kyu?",
+        premise="Keep this overview focused on the requested rank.",
+        mode="outline",
+    )
+
+    result = build_anchor_result(req, _full_rank_passages(), max_chars=1200, max_items=12)
+    block = result.anchor_block.lower()
+
+    assert result.metadata["rank_scoped"] is True
+    assert result.metadata["rank_scope"] == "6th kyu"
+    assert "6th kyu" in block
+    assert "rokushakubo" in block
+    assert "7th kyu" not in block
+    assert "8th kyu" not in block
+    assert "9th kyu" not in block
+    assert "katana" not in block
+    assert "hanbo" not in block
+    assert "knife" not in block
+    assert "shoto" not in block
+
+
+def test_rank_comparison_anchor_result_is_not_single_rank_scoped():
+    req = BlogRequest(
+        hook_title="Compare 6th kyu and 7th kyu",
+        mode="outline",
+    )
+
+    result = build_anchor_result(req, _full_rank_passages(), max_chars=1200, max_items=12)
+
+    assert result.metadata["rank_scoped"] is False
+    assert result.metadata["rank_scope"] is None
