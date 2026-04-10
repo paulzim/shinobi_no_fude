@@ -14,6 +14,11 @@ from scribe.pipeline.blog_mode import (
     build_anchor_result,
     build_brief_result,
 )
+from scribe.pipeline.rank_overview import (
+    build_rank_overview_context,
+    detect_rank_overview_request,
+    rank_overview_retrieval_query,
+)
 from scribe.writers.prompt_builder import build_writer_prompt
 from scribe.writers.rewrite_commands import parse_rewrite_command
 
@@ -97,8 +102,28 @@ def _collect_context(
     anchor_max_chars: int,
 ) -> tuple[BriefResult, AnchorResult]:
     actual_retriever = retriever or _default_retriever
-    query = _build_retrieval_query(request)
+    base_query = _build_retrieval_query(request)
+    rank_overview_key = detect_rank_overview_request(base_query)
+    query = (
+        rank_overview_retrieval_query(request, rank_overview_key)
+        if rank_overview_key
+        else base_query
+    )
     candidates = list(actual_retriever(query, k=top_k) or [])
+
+    if rank_overview_key:
+        rank_context = build_rank_overview_context(
+            request,
+            candidates,
+            rank_key=rank_overview_key,
+            max_chars=min(brief_max_chars, 5000),
+        )
+        if rank_context is not None:
+            brief, anchors = rank_context
+            brief.metadata["retrieval_query"] = query
+            anchors.metadata["retrieval_query"] = query
+            return brief, anchors
+
     kept = candidates[:top_k_keep]
 
     anchors = build_anchor_result(request, kept, max_chars=anchor_max_chars, max_items=10)
