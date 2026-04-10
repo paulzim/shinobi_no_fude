@@ -131,12 +131,13 @@ def _call_llm(
     *,
     mode: BlogMode,
     settings: BlogModeSettings,
+    max_tokens_override: int | None = None,
 ) -> tuple[str, str]:
     caller = llm or _default_llm
     kwargs = {
         "system": "You are a concise blog-writing assistant.",
         "temperature": settings.temperature_for(mode),
-        "max_tokens": settings.max_tokens_for(mode),
+        "max_tokens": max_tokens_override or settings.max_tokens_for(mode),
     }
     try:
         return caller(prompt, **kwargs)
@@ -153,6 +154,40 @@ def _clip_text(text: str, max_chars: int) -> str:
     if max_chars <= 3:
         return text[:max_chars]
     return text[: max_chars - 3].rstrip() + "..."
+
+
+def is_likely_truncated_output(text: str) -> bool:
+    """Heuristically detect LLM output that appears cut off before completion."""
+    cleaned = (text or "").rstrip()
+    if not cleaned:
+        return False
+
+    last_line = cleaned.splitlines()[-1].strip()
+    if not last_line:
+        return False
+
+    if re.match(r"^#{1,6}(\s+\S.*)?$", last_line):
+        return True
+
+    if re.search(r"[-–—,:;]$", last_line):
+        return True
+
+    if re.search(
+        r"\b(and|or|but|because|while|with|without|that|which|to|of|the|a|an|in|on|for|from|as|by)$",
+        last_line,
+        flags=re.IGNORECASE,
+    ):
+        return True
+
+    if re.search(r"[A-Za-z0-9]$", last_line) and len(last_line.split()) >= 4:
+        return True
+
+    return False
+
+
+def _rewrite_retry_max_tokens(settings: BlogModeSettings) -> int:
+    current = settings.max_tokens_for(BlogMode.REWRITE)
+    return max(current + 256, int(current * 1.25))
 
 
 def _build_verify_claims_prompt(
@@ -620,6 +655,32 @@ def rewrite_with_instruction(
         max_chars=cfg.prompt_char_limit(prompt_max_chars),
     )
     text, raw = _call_llm(llm, prompt, mode=BlogMode.REWRITE, settings=cfg)
+    truncation_detected = is_likely_truncated_output(text)
+    truncation_metadata: dict[str, Any] = {
+        "detected": truncation_detected,
+        "retried": False,
+        "initial_max_output_tokens": cfg.max_tokens_for(BlogMode.REWRITE),
+        "retry_max_output_tokens": None,
+        "final_detected": truncation_detected,
+    }
+    if truncation_detected:
+        retry_max_tokens = _rewrite_retry_max_tokens(cfg)
+        retry_text, retry_raw = _call_llm(
+            llm,
+            prompt,
+            mode=BlogMode.REWRITE,
+            settings=cfg,
+            max_tokens_override=retry_max_tokens,
+        )
+        if retry_text.strip():
+            text, raw = retry_text, retry_raw
+        truncation_metadata.update(
+            {
+                "retried": True,
+                "retry_max_output_tokens": retry_max_tokens,
+                "final_detected": is_likely_truncated_output(text),
+            }
+        )
     verify_claims, verify_metadata = _verify_claims(
         llm,
         text,
@@ -646,6 +707,7 @@ def rewrite_with_instruction(
             "temperature": cfg.temperature_for(BlogMode.REWRITE),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.REWRITE),
             "focused_rewrite": focused_metadata,
+            "truncation": truncation_metadata,
             "verify_claims": verify_metadata,
         },
     )

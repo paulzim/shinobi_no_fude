@@ -1,10 +1,11 @@
 from unittest.mock import Mock
 
 from scribe.config import BlogModeSettings
-from scribe.models import BlogRequest
+from scribe.models import BlogMode, BlogRequest
 from scribe.pipeline.orchestrator import (
     build_around_hook,
     draft_from_outline,
+    is_likely_truncated_output,
     polish_draft,
     rewrite_with_instruction,
 )
@@ -113,6 +114,52 @@ class VerifyingLLM:
                 '{"stage":"verify"}',
             )
         return ("Draft body with one ambitious historical claim.", '{"stage":"draft"}')
+
+
+class TruncatingRewriteLLM:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        system: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "system": system,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+        )
+        if len(self.calls) == 1:
+            return "The rewritten draft starts strongly but", '{"attempt":1}'
+        return "The rewritten draft now ends cleanly.", '{"attempt":2}'
+
+
+def test_rewrite_truncation_detector_samples():
+    truncated = [
+        "This rewrite stops in the middle because",
+        "This paragraph ends with a dangling clause,",
+        "This paragraph trails off after a dash -",
+        "## Katana Details",
+        "The final sentence stops in the middle of the idea",
+    ]
+    complete = [
+        "This rewrite ends cleanly.",
+        "Does this rewrite end cleanly?",
+        "This rewrite ends cleanly!",
+        "This rewrite ends cleanly.)",
+    ]
+
+    for text in truncated:
+        assert is_likely_truncated_output(text) is True
+    for text in complete:
+        assert is_likely_truncated_output(text) is False
 
 
 def test_build_around_hook_returns_titles_hooks_outline_and_anchor_metadata():
@@ -281,6 +328,28 @@ def test_rewrite_instruction_without_focus_term_skips_focused_retrieval():
         "focus_term": None,
         "retrieval_attempted": False,
     }
+
+
+def test_rewrite_retries_once_when_output_looks_truncated():
+    retriever = RecordingRetriever()
+    llm = TruncatingRewriteLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+
+    result = rewrite_with_instruction(
+        req,
+        "## Title\n\nCurrent draft body.",
+        "More direct",
+        retriever=retriever,
+        llm=llm,
+    )
+
+    assert result.draft.body == "The rewritten draft now ends cleanly."
+    assert len(llm.calls) == 2
+    assert llm.calls[0]["max_tokens"] == BlogModeSettings().max_tokens_for(BlogMode.REWRITE)
+    assert llm.calls[1]["max_tokens"] > llm.calls[0]["max_tokens"]
+    assert result.metadata["truncation"]["detected"] is True
+    assert result.metadata["truncation"]["retried"] is True
+    assert result.metadata["truncation"]["final_detected"] is False
 
 
 def test_polish_prompt_receives_full_normal_length_draft():
