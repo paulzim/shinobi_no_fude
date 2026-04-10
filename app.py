@@ -1155,9 +1155,19 @@ def answer_with_rag(question: str, k: int | None = None) -> Tuple[str, List[Dict
 # --------------------------------------------------------------------
 # Streamlit UI
 # --------------------------------------------------------------------
-st.set_page_config(page_title="NTTV Chatbot (RAG)", page_icon="🥋", layout="wide")
+st.set_page_config(page_title="Shinobi no Fude", page_icon="筆", layout="wide")
 
-st.title("🥋 NTTV Chatbot (RAG)")
+st.markdown(
+    """
+    <div style="padding: 0.25rem 0 1rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(49, 51, 63, 0.16);">
+      <h1 style="margin: 0; line-height: 1.08;">Shinobi no Fude 忍びの筆</h1>
+      <div style="margin-top: 0.35rem; font-size: 1.08rem; color: rgba(49, 51, 63, 0.70); letter-spacing: 0.02em;">
+        The Shinobi's Brush
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def _init_blog_state() -> None:
@@ -1252,95 +1262,52 @@ def _current_blog_draft() -> DraftResult:
         sources_used=_blog_sources_used(),
     )
 
+
+def _render_index_diagnostics() -> None:
+    index_dir = os.getenv("INDEX_DIR", DEFAULT_INDEX_DIR)
+    config_path = os.getenv("CONFIG_PATH", os.path.join(index_dir, "config.json"))
+    meta_path = os.getenv("META_PATH", os.path.join(index_dir, "meta.pkl"))
+
+    st.write("**Working directory:**", os.getcwd())
+    st.write("**__file__ dir:**", os.path.dirname(__file__))
+    st.write("**INDEX_DIR:**", index_dir)
+    st.write("**CONFIG_PATH:**", config_path, "✅" if os.path.exists(config_path) else "❌")
+    st.write("**META_PATH:**", meta_path, "✅" if os.path.exists(meta_path) else "❌")
+
+    idx_env = os.getenv("INDEX_PATH")
+    if idx_env:
+        st.write("**INDEX_PATH (env):**", idx_env, "✅" if os.path.exists(idx_env) else "❌")
+
+    faiss_guess_1 = os.path.join(index_dir, "index.faiss")
+    faiss_guess_2 = os.path.join(index_dir, "faiss.index")
+    st.write("**FAISS candidate 1:**", faiss_guess_1, "✅" if os.path.exists(faiss_guess_1) else "❌")
+    st.write("**FAISS candidate 2:**", faiss_guess_2, "✅" if os.path.exists(faiss_guess_2) else "❌")
+
+
 with st.sidebar:
-    st.markdown("### Options")
-    show_debug = st.checkbox("Show debugging", value=True)
+    st.markdown("### Shinobi no Fude")
+    st.caption("A local writing studio for grounded curriculum notes, blog drafting, and focused Q&A.")
 
-    st.markdown("### Output")
-    output_style = st.radio("Format", ["Bullets", "Paragraph"], index=0, help="Affects deterministic answers only.")
-    tone_style = st.radio("Tone", ["Crisp", "Chatty"], index=0, help="Affects deterministic answers only.")
-    st.caption("Deterministic answers = school profiles, rank requirements, weapon-rank facts, technique definitions, etc.")
-
-    TECH_DETAIL_MODE = st.selectbox(
-        "Technique detail",
-        options=["Brief", "Standard", "Full"],
-        index=1,
-        help="How much detail to show for single-technique answers."
-    )
-
-    st.markdown("---")
     st.markdown("**Backend**")
     base = _resolved_llm_base()
     model = _resolved_llm_model(base)
     st.caption(f"LLM base: `{base}`")
     st.caption(f"Model: `{model}`")
-    
-    if show_debug:
-        st.markdown("---")
-        with st.expander("Index diagnostics", expanded=False):
-            index_dir = os.getenv("INDEX_DIR", DEFAULT_INDEX_DIR)
-            config_path = os.getenv("CONFIG_PATH", os.path.join(index_dir, "config.json"))
-            meta_path = os.getenv("META_PATH", os.path.join(index_dir, "meta.pkl"))
 
-            st.write("**Working directory:**", os.getcwd())
-            st.write("**__file__ dir:**", os.path.dirname(__file__))
-            st.write("**INDEX_DIR:**", index_dir)
-            st.write("**CONFIG_PATH:**", config_path, "✅" if os.path.exists(config_path) else "❌")
-            st.write("**META_PATH:**", meta_path, "✅" if os.path.exists(meta_path) else "❌")
-
-            # Likely FAISS locations
-            idx_env = os.getenv("INDEX_PATH")
-            if idx_env:
-                st.write("**INDEX_PATH (env):**", idx_env, "✅" if os.path.exists(idx_env) else "❌")
-
-            faiss_guess_1 = os.path.join(index_dir, "index.faiss")
-            faiss_guess_2 = os.path.join(index_dir, "faiss.index")
-            st.write("**FAISS candidate 1:**", faiss_guess_1, "✅" if os.path.exists(faiss_guess_1) else "❌")
-            st.write("**FAISS candidate 2:**", faiss_guess_2, "✅" if os.path.exists(faiss_guess_2) else "❌")
-    
+    st.markdown("---")
+    show_tracebacks = st.checkbox(
+        "Show error tracebacks",
+        value=False,
+        key="global_show_tracebacks",
+        help="App-wide debug option for unexpected errors in either tab.",
+    )
 
 _init_blog_state()
-qa_tab, blog_tab = st.tabs(["Q&A", "Blog mode"])
-
-with qa_tab:
-    q = st.text_input(
-        "Ask a question:",
-        value="",
-        placeholder="e.g., what is omote gyaku",
-        key="qa_question",
-    )
-    go = st.button("Ask", type="primary", key="qa_ask")
-
-    if go and q.strip():
-        try:
-            with st.spinner("Thinking..."):
-                ans, top_passages, raw_json = answer_with_rag(q.strip())
-        except Exception as e:
-            st.error(f"Backend error: {e}")
-            if show_debug:
-                st.exception(e)
-            st.stop()
-
-        st.markdown("### Answer")
-        st.write(ans)
-
-        if show_debug:
-            st.markdown("### Retrieved sources")
-            for i, h in enumerate(top_passages, 1):
-                name = os.path.basename(h.get("source") or "")
-                st.write(
-                    f"[{i}] {name} — score {h.get('score', 0):.3f} — "
-                    f"priority {int(h.get('meta',{}).get('priority',0))}"
-                )
-            st.markdown("### Raw model response (JSON-ish)")
-            st.code(raw_json, language="json")
-
-    else:
-        st.info("Enter a question and click **Ask**.")
+blog_tab, qa_tab = st.tabs(["Blog", "Q&A"])
 
 with blog_tab:
     st.markdown("### Blog mode")
-    st.caption("A separate writing pipeline: extractors and RAG become anchors, then the writer drafts from them.")
+    st.caption("Primary writing workflow: deterministic anchors and RAG briefs become grounded blog drafts.")
 
     st.text_input(
         "Hook/title",
@@ -1410,7 +1377,7 @@ with blog_tab:
                 _store_blog_pipeline_result(result, "Draft rewritten.")
     except Exception as e:
         st.error(f"Blog mode error: {e}")
-        if show_debug:
+        if show_tracebacks:
             st.exception(e)
 
     if st.session_state.get("blog_last_status"):
@@ -1484,7 +1451,95 @@ with blog_tab:
                 st.code(render_image_prompt_package(package), language="markdown")
             except Exception as e:
                 st.error(f"Could not build image prompt package: {e}")
-                if show_debug:
+                if show_tracebacks:
                     st.exception(e)
         else:
             st.info("Add a draft and selected section to preview an image prompt package.")
+
+with qa_tab:
+    st.markdown("### Q&A")
+    st.caption("Secondary retrieval mode for direct questions against the local corpus.")
+
+    with st.expander("Q&A controls", expanded=True):
+        style_col, tone_col, detail_col = st.columns(3)
+        with style_col:
+            output_style = st.radio(
+                "Output format",
+                ["Bullets", "Paragraph"],
+                index=0,
+                help="Affects deterministic answers only.",
+                key="qa_output_style",
+            )
+        with tone_col:
+            tone_style = st.radio(
+                "Tone",
+                ["Crisp", "Chatty"],
+                index=0,
+                help="Affects deterministic answers only.",
+                key="qa_tone_style",
+            )
+        with detail_col:
+            TECH_DETAIL_MODE = st.selectbox(
+                "Technique detail",
+                options=["Brief", "Standard", "Full"],
+                index=1,
+                help="How much detail to show for single-technique answers.",
+                key="qa_tech_detail_mode",
+            )
+
+        show_retrieved_sources = st.checkbox(
+            "Show retrieved sources",
+            value=False,
+            key="qa_show_retrieved_sources",
+        )
+        show_raw_model_response = st.checkbox(
+            "Show raw model response",
+            value=False,
+            key="qa_show_raw_model_response",
+        )
+        show_index_diagnostics = st.checkbox(
+            "Show index diagnostics",
+            value=False,
+            key="qa_show_index_diagnostics",
+        )
+        st.caption("These controls apply only to Q&A responses.")
+
+    if show_index_diagnostics:
+        with st.expander("Index diagnostics", expanded=False):
+            _render_index_diagnostics()
+
+    q = st.text_input(
+        "Ask a question:",
+        value="",
+        placeholder="e.g., what is omote gyaku",
+        key="qa_question",
+    )
+    go = st.button("Ask", type="primary", key="qa_ask")
+
+    if go and q.strip():
+        try:
+            with st.spinner("Thinking..."):
+                ans, top_passages, raw_json = answer_with_rag(q.strip())
+        except Exception as e:
+            st.error(f"Backend error: {e}")
+            if show_tracebacks:
+                st.exception(e)
+            st.stop()
+
+        st.markdown("### Answer")
+        st.write(ans)
+
+        if show_retrieved_sources:
+            st.markdown("### Retrieved sources")
+            for i, h in enumerate(top_passages, 1):
+                name = os.path.basename(h.get("source") or "")
+                st.write(
+                    f"[{i}] {name} — score {h.get('score', 0):.3f} — "
+                    f"priority {int(h.get('meta',{}).get('priority',0))}"
+                )
+        if show_raw_model_response:
+            st.markdown("### Raw model response (JSON-ish)")
+            st.code(raw_json, language="json")
+
+    else:
+        st.info("Enter a question and click **Ask**.")
