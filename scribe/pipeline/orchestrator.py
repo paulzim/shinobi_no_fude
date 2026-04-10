@@ -112,6 +112,130 @@ def _call_llm(
         return caller(prompt, system=kwargs["system"])
 
 
+def _clip_text(text: str, max_chars: int) -> str:
+    text = (text or "").strip()
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _build_verify_claims_prompt(
+    draft_text: str,
+    anchors: AnchorResult,
+    brief: BriefResult,
+    *,
+    settings: BlogModeSettings,
+) -> str:
+    prompt = "\n\n".join(
+        [
+            "You are checking a blog draft against compact factual anchors.",
+            (
+                "## Task\n"
+                "Return at most 5 short bullets naming claims that may need source verification. "
+                "Only flag claims not clearly supported by the anchors or brief. "
+                'If nothing stands out, return exactly "- None flagged."'
+            ),
+            (
+                "## Output Limits\n"
+                f"- Total stored claim text must fit within {settings.verify_claims_max_chars} characters.\n"
+                "- Keep each bullet terse; no explanations longer than one sentence."
+            ),
+            "## Draft\n" + _clip_text(draft_text, 900),
+            "## Anchors\n" + _clip_text(anchors.anchor_block, 600),
+            "## Brief\n" + _clip_text(brief.brief_markdown, 700),
+        ]
+    )
+    return _clip_text(prompt, min(settings.active_context_limit, 2600))
+
+
+def _strip_bullet(line: str) -> str:
+    line = line.strip()
+    if line.startswith(("- ", "* ")):
+        return line[2:].strip()
+    if line[:1].isdigit() and "." in line[:5]:
+        return line.split(".", 1)[1].strip()
+    return line
+
+
+def _parse_verify_claims(text: str, *, max_chars: int) -> list[str]:
+    if max_chars <= 0:
+        return []
+
+    claims: list[str] = []
+    remaining = max_chars
+    for raw in (text or "").splitlines():
+        claim = _strip_bullet(raw)
+        if not claim:
+            continue
+        if claim.lower().rstrip(".") in {"none", "none flagged", "no weak claims found"}:
+            continue
+
+        claim = _clip_text(claim, min(160, remaining))
+        if not claim:
+            break
+        claims.append(claim)
+        remaining -= len(claim)
+        if remaining <= 0 or len(claims) >= 5:
+            break
+
+    return claims
+
+
+def _verify_claims(
+    llm: LLMCallable | None,
+    draft_text: str,
+    anchors: AnchorResult,
+    brief: BriefResult,
+    *,
+    settings: BlogModeSettings,
+) -> tuple[list[str], dict[str, Any]]:
+    if not settings.verify_claims_enabled:
+        return [], {"enabled": False}
+
+    if settings.verify_claims_max_chars <= 0:
+        return [], {"enabled": True, "skipped": "verify_claims_max_chars <= 0"}
+
+    caller = llm or _default_llm
+    prompt = _build_verify_claims_prompt(draft_text, anchors, brief, settings=settings)
+    kwargs = {
+        "system": "You are a terse claim-verification assistant.",
+        "temperature": settings.verify_claims_temperature,
+        "max_tokens": settings.verify_claims_max_tokens,
+    }
+    try:
+        text, raw = caller(prompt, **kwargs)
+    except TypeError:
+        text, raw = caller(prompt, system=kwargs["system"])
+
+    claims = _parse_verify_claims(text, max_chars=settings.verify_claims_max_chars)
+    return claims, {
+        "enabled": True,
+        "prompt_chars": len(prompt),
+        "max_chars": settings.verify_claims_max_chars,
+        "temperature": settings.verify_claims_temperature,
+        "max_output_tokens": settings.verify_claims_max_tokens,
+        "raw": raw,
+    }
+
+
+def _draft_result(
+    request: BlogRequest,
+    body: str,
+    brief: BriefResult,
+    verify_claims: list[str],
+) -> DraftResult:
+    return DraftResult(
+        title=request.hook_title,
+        body=body.strip(),
+        sources_used=list(brief.sources_used),
+        verify_claims=list(verify_claims),
+    )
+
+
 def _heading_key(line: str) -> str:
     return line.strip().strip("#").strip().rstrip(":").lower()
 
@@ -264,9 +388,16 @@ def draft_from_outline(
         max_chars=cfg.prompt_char_limit(prompt_max_chars),
     )
     text, raw = _call_llm(llm, prompt, mode=BlogMode.DRAFT, settings=cfg)
+    verify_claims, verify_metadata = _verify_claims(
+        llm,
+        text,
+        anchors,
+        brief,
+        settings=cfg,
+    )
 
     return DraftPipelineResult(
-        draft=DraftResult(title=request.hook_title, body=text.strip()),
+        draft=_draft_result(request, text, brief, verify_claims),
         anchors=anchors,
         brief=brief,
         metadata={
@@ -274,6 +405,7 @@ def draft_from_outline(
             "prompt_chars": len(prompt),
             "temperature": cfg.temperature_for(BlogMode.DRAFT),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.DRAFT),
+            "verify_claims": verify_metadata,
         },
     )
 
@@ -310,9 +442,16 @@ def polish_draft(
         max_chars=cfg.prompt_char_limit(prompt_max_chars),
     )
     text, raw = _call_llm(llm, prompt, mode=BlogMode.POLISH, settings=cfg)
+    verify_claims, verify_metadata = _verify_claims(
+        llm,
+        text,
+        anchors,
+        brief,
+        settings=cfg,
+    )
 
     return DraftPipelineResult(
-        draft=DraftResult(title=request.hook_title, body=text.strip()),
+        draft=_draft_result(request, text, brief, verify_claims),
         anchors=anchors,
         brief=brief,
         metadata={
@@ -320,6 +459,7 @@ def polish_draft(
             "prompt_chars": len(prompt),
             "temperature": cfg.temperature_for(BlogMode.POLISH),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.POLISH),
+            "verify_claims": verify_metadata,
         },
     )
 
@@ -359,9 +499,16 @@ def rewrite_with_instruction(
         max_chars=cfg.prompt_char_limit(prompt_max_chars),
     )
     text, raw = _call_llm(llm, prompt, mode=BlogMode.REWRITE, settings=cfg)
+    verify_claims, verify_metadata = _verify_claims(
+        llm,
+        text,
+        anchors,
+        brief,
+        settings=cfg,
+    )
 
     return DraftPipelineResult(
-        draft=DraftResult(title=request.hook_title, body=text.strip()),
+        draft=_draft_result(request, text, brief, verify_claims),
         anchors=anchors,
         brief=brief,
         metadata={
@@ -371,5 +518,6 @@ def rewrite_with_instruction(
             "command": command,
             "temperature": cfg.temperature_for(BlogMode.REWRITE),
             "max_output_tokens": cfg.max_tokens_for(BlogMode.REWRITE),
+            "verify_claims": verify_metadata,
         },
     )

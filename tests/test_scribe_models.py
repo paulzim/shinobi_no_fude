@@ -82,3 +82,5 @@ def test_result_objects_create_with_minimal_data():
     assert brief.metadata["kept_count"] == 3
     assert draft.title == "Hanbo post"
     assert "8th kyu" in draft.body.lower()
+    assert draft.sources_used == []
+    assert draft.verify_claims == []

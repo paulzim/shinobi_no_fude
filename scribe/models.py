@@ -89,3 +89,5 @@ class BriefResult:
 class DraftResult:
     title: str
     body: str
+    sources_used: list[str] = field(default_factory=list)
+    verify_claims: list[str] = field(default_factory=list)

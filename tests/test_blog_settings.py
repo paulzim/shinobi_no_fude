@@ -42,6 +42,10 @@ def test_blog_mode_settings_defaults_and_deep_mode():
 
     assert cfg.context_limit == 32000
     assert cfg.active_context_limit == 32000
+    assert cfg.verify_claims_enabled is False
+    assert cfg.verify_claims_max_chars == 600
+    assert cfg.verify_claims_max_tokens == 180
+    assert cfg.verify_claims_temperature == 0.1
     assert cfg.rag_top_k_retrieve == 18
     assert cfg.rag_top_k_keep == 8
     assert cfg.rag_budget_tokens == 8000

@@ -15,6 +15,10 @@ class BlogModeSettings:
     context_limit: int = 32000
     deep_context_limit: int = 64000
     deep_mode: bool = False
+    verify_claims_enabled: bool = False
+    verify_claims_max_chars: int = 600
+    verify_claims_max_tokens: int = 180
+    verify_claims_temperature: float = 0.1
     rag_top_k_retrieve: int = 18
     rag_top_k_keep: int = 8
     rag_budget_tokens: int = 8000

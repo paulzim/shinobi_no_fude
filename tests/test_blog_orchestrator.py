@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from scribe.config import BlogModeSettings
 from scribe.models import BlogRequest
 from scribe.pipeline.orchestrator import (
     build_around_hook,
@@ -56,6 +57,36 @@ class FakeLLM:
         return ("Fallback response", "{}")
 
 
+class VerifyingLLM:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        system: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "system": system,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+        )
+        if "checking a blog draft" in prompt:
+            return (
+                "- This sweeping history claim needs more support than the compact brief gives it. "
+                "It is intentionally long so the cap has to trim it.\n"
+                "- Timeline claim is vague.",
+                '{"stage":"verify"}',
+            )
+        return ("Draft body with one ambitious historical claim.", '{"stage":"draft"}')
+
+
 def test_build_around_hook_returns_titles_hooks_outline_and_anchor_metadata():
     retriever = Mock(return_value=_passages())
     llm = FakeLLM()
@@ -86,7 +117,39 @@ def test_draft_from_outline_returns_brief_anchors_and_draft():
     assert result.brief.brief_markdown.startswith("### Blog Brief")
     assert result.anchors.anchor_block.startswith("### Blog Anchors")
     assert result.draft.body == "Full draft grounded in hanbo anchors."
+    assert result.draft.sources_used == ["nttv rank requirements.txt"]
+    assert result.draft.verify_claims == []
+    assert result.metadata["verify_claims"]["enabled"] is False
     assert "Stage: draft" in llm.prompts[0]
+
+
+def test_draft_from_outline_can_generate_capped_verify_claims():
+    retriever = Mock(return_value=_passages())
+    llm = VerifyingLLM()
+    req = BlogRequest(hook_title="Why Hanbo Still Matters")
+    cfg = BlogModeSettings(
+        verify_claims_enabled=True,
+        verify_claims_max_chars=80,
+        verify_claims_max_tokens=42,
+        verify_claims_temperature=0.0,
+    )
+
+    result = draft_from_outline(
+        req,
+        "## Outline\n- Start with hanbo",
+        retriever=retriever,
+        llm=llm,
+        settings=cfg,
+    )
+
+    assert result.draft.sources_used == ["nttv rank requirements.txt"]
+    assert result.draft.verify_claims
+    assert sum(len(claim) for claim in result.draft.verify_claims) <= 80
+    assert result.metadata["verify_claims"]["enabled"] is True
+    assert result.metadata["verify_claims"]["max_chars"] == 80
+    assert "checking a blog draft" in llm.calls[1]["prompt"]
+    assert llm.calls[1]["temperature"] == 0.0
+    assert llm.calls[1]["max_tokens"] == 42
 
 
 def test_polish_and_rewrite_are_mockable_headlessly():
