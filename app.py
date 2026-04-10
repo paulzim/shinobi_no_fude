@@ -47,6 +47,8 @@ from scribe.text_seam import build_extraction_context, build_grounded_prompt
 # Index / metadata lazy loader (Render-safe)
 # --------------------------------------------------------------------
 DEFAULT_INDEX_DIR = os.path.join(os.path.dirname(__file__), "index")
+DEFAULT_LLM_BASE = "http://127.0.0.1:11434/v1"
+DEFAULT_LOCAL_MODEL = "llama3.2:3b"
 
 # Globals that get populated once we actually load the index
 EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -178,6 +180,26 @@ def _load_index_and_meta() -> Tuple[Any, List[Dict[str, Any]]]:
 # Embeddings
 # --------------------------------------------------------------------
 _EMBED_MODEL = None
+
+
+def _resolved_llm_base() -> str:
+    return (
+        os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("OPENROUTER_API_BASE")
+        or os.environ.get("LM_STUDIO_BASE_URL")
+        or DEFAULT_LLM_BASE
+    )
+
+
+def _resolved_llm_model(base: Optional[str] = None) -> str:
+    model = os.environ.get("MODEL")
+    if model:
+        return model
+
+    base = base or _resolved_llm_base()
+    if "openai" in base or "openrouter" in base:
+        return "gpt-4o-mini"
+    return DEFAULT_LOCAL_MODEL
 
 def get_embedder():
     global _EMBED_MODEL
@@ -850,14 +872,9 @@ def call_llm(
     system: str = "You are a precise assistant. Use only the provided context."
 ) -> Tuple[str, str]:
     import requests
-    model = os.environ.get("MODEL", "gpt-4o-mini")
+    base = _resolved_llm_base()
+    model = _resolved_llm_model(base)
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
-    base = (
-        os.environ.get("OPENAI_BASE_URL")
-        or os.environ.get("OPENROUTER_API_BASE")
-        or os.environ.get("LM_STUDIO_BASE_URL")
-        or "http://localhost:1234/v1"
-    )
 
     headers = {"Content-Type": "application/json"}
     if "openai" in base or "openrouter" in base:
@@ -1154,13 +1171,8 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**Backend**")
-    base = (
-        os.environ.get("OPENAI_BASE_URL")
-        or os.environ.get("OPENROUTER_API_BASE")
-        or os.environ.get("LM_STUDIO_BASE_URL")
-        or "http://localhost:1234/v1"
-    )
-    model = os.environ.get("MODEL", "gpt-4o-mini")
+    base = _resolved_llm_base()
+    model = _resolved_llm_model(base)
     st.caption(f"LLM base: `{base}`")
     st.caption(f"Model: `{model}`")
     

@@ -1,7 +1,7 @@
 {
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "embed_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "faiss_path": "C:\\Users\\paulz\\GitHub\\nttv_chatbot_ext\\index\\index.faiss",
+  "faiss_path": "index.faiss",
   "top_k": 6,
   "chunk_size": 700,
   "chunk_overlap": 120,
